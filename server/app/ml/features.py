@@ -150,6 +150,45 @@ class FeatureBuilder:
         features["f2_win_streak"] = f2_stats["win_streak"]
         features["win_streak_diff"] = f1_stats["win_streak"] - f2_stats["win_streak"]
 
+        # === Inactivity / layoff ===
+        f1_layoff = self._get_layoff_days(f1.id, event_date)
+        f2_layoff = self._get_layoff_days(f2.id, event_date)
+        features["f1_layoff_days"] = f1_layoff
+        features["f2_layoff_days"] = f2_layoff
+        features["layoff_diff"] = f1_layoff - f2_layoff
+        features["f1_long_layoff"] = int(f1_layoff > 365)  # 1+ year off
+        features["f2_long_layoff"] = int(f2_layoff > 365)
+
+        # === Cardio / late-fight performance ===
+        f1_cardio = self._get_cardio_stats(f1.id, event_date)
+        f2_cardio = self._get_cardio_stats(f2.id, event_date)
+        for key in ["strike_dropoff", "late_round_win_rate", "r1_output", "r3_plus_output"]:
+            features[f"f1_{key}"] = f1_cardio.get(key, 0)
+            features[f"f2_{key}"] = f2_cardio.get(key, 0)
+            features[f"{key}_diff"] = f1_cardio.get(key, 0) - f2_cardio.get(key, 0)
+
+        # === Fighter style type ===
+        f1_style = self._get_fighter_style(f1.id, event_date)
+        f2_style = self._get_fighter_style(f2.id, event_date)
+        for key in ["striker_score", "grappler_score", "wrestler_score", "balanced_score"]:
+            features[f"f1_{key}"] = f1_style.get(key, 0.25)
+            features[f"f2_{key}"] = f2_style.get(key, 0.25)
+        # Style matchup interactions
+        features["striker_vs_grappler"] = f1_style.get("striker_score", 0) * f2_style.get("grappler_score", 0)
+        features["grappler_vs_striker"] = f1_style.get("grappler_score", 0) * f2_style.get("striker_score", 0)
+        features["wrestler_vs_striker"] = f1_style.get("wrestler_score", 0) * f2_style.get("striker_score", 0)
+        features["striker_vs_wrestler"] = f1_style.get("striker_score", 0) * f2_style.get("wrestler_score", 0)
+
+        # === Weight class movement ===
+        f1_wc = self._get_weight_class_movement(f1.id, fight.weight_class, event_date)
+        f2_wc = self._get_weight_class_movement(f2.id, fight.weight_class, event_date)
+        features["f1_moving_up"] = int(f1_wc.get("direction", 0) > 0)
+        features["f1_moving_down"] = int(f1_wc.get("direction", 0) < 0)
+        features["f2_moving_up"] = int(f2_wc.get("direction", 0) > 0)
+        features["f2_moving_down"] = int(f2_wc.get("direction", 0) < 0)
+        features["f1_fights_at_weight"] = f1_wc.get("fights_at_weight", 0)
+        features["f2_fights_at_weight"] = f2_wc.get("fights_at_weight", 0)
+
         # === Opponent quality / strength of schedule ===
         f1_opp = self._get_opponent_quality(f1.id, event_date)
         f2_opp = self._get_opponent_quality(f2.id, event_date)
@@ -307,6 +346,230 @@ class FeatureBuilder:
             "avg_fight_time_min": total_time_min / num_fights,
             "win_rate": wins / num_fights,
         }
+
+    def _get_layoff_days(self, fighter_id: int, event_date: date) -> int:
+        """Get days since fighter's last fight."""
+        last_fight = self.session.execute(
+            select(Event.date)
+            .join(Fight, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < event_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+            .order_by(Event.date.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        if last_fight is None:
+            return 365  # Default to 1 year if no prior fight
+        return (event_date - last_fight).days
+
+    def _get_cardio_stats(self, fighter_id: int, before_date: date) -> dict:
+        """Compute cardio / late-fight performance stats.
+
+        Measures strike output drop-off between early and late rounds,
+        and win rate in fights that go past round 2.
+        """
+        fights = self.session.execute(
+            select(Fight, Event.date)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+            .order_by(Event.date.desc())
+            .limit(10)  # Last 10 fights for cardio analysis
+        ).all()
+
+        if not fights:
+            return {}
+
+        fight_ids = [f.id for f, _ in fights]
+
+        r1_sig = []  # Sig strikes in round 1
+        r3_plus_sig = []  # Sig strikes in rounds 3+
+        late_fight_wins = 0
+        late_fight_total = 0
+
+        for fight, _ in fights:
+            rounds = self.session.execute(
+                select(RoundStats).where(
+                    and_(
+                        RoundStats.fight_id == fight.id,
+                        RoundStats.fighter_id == fighter_id,
+                    )
+                ).order_by(RoundStats.round_number)
+            ).scalars().all()
+
+            for r in rounds:
+                if r.round_number == 1:
+                    r1_sig.append(r.sig_strikes_landed or 0)
+                elif r.round_number >= 3:
+                    r3_plus_sig.append(r.sig_strikes_landed or 0)
+
+            # Track late-fight (3+ rounds) wins
+            total_rounds = fight.total_rounds or fight.finish_round or 3
+            if total_rounds >= 3 and fight.finish_round and fight.finish_round >= 3:
+                late_fight_total += 1
+                if fight.winner_id == fighter_id:
+                    late_fight_wins += 1
+            elif fight.method_category == "decision":
+                late_fight_total += 1
+                if fight.winner_id == fighter_id:
+                    late_fight_wins += 1
+
+        avg_r1 = np.mean(r1_sig) if r1_sig else 0
+        avg_r3 = np.mean(r3_plus_sig) if r3_plus_sig else 0
+
+        # Drop-off: negative = output decreases in later rounds
+        dropoff = (avg_r3 - avg_r1) / max(avg_r1, 1) if avg_r1 > 0 else 0
+
+        return {
+            "strike_dropoff": dropoff,  # Negative = bad cardio
+            "late_round_win_rate": late_fight_wins / max(late_fight_total, 1),
+            "r1_output": avg_r1,
+            "r3_plus_output": avg_r3,
+        }
+
+    def _get_fighter_style(self, fighter_id: int, before_date: date) -> dict:
+        """Classify fighter style based on their stat profile.
+
+        Returns scores (0-1) for: striker, grappler, wrestler, balanced.
+        Based on how they distribute their offense.
+        """
+        fights = self.session.execute(
+            select(Fight)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+        ).scalars().all()
+
+        if not fights:
+            return {"striker_score": 0.25, "grappler_score": 0.25, "wrestler_score": 0.25, "balanced_score": 0.25}
+
+        fight_ids = [f.id for f in fights]
+        rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(
+                    RoundStats.fight_id.in_(fight_ids),
+                    RoundStats.fighter_id == fighter_id,
+                )
+            )
+        ).scalars().all()
+
+        if not rounds:
+            return {"striker_score": 0.25, "grappler_score": 0.25, "wrestler_score": 0.25, "balanced_score": 0.25}
+
+        total_sig = sum(r.sig_strikes_landed or 0 for r in rounds)
+        total_distance = sum(r.distance_strikes_landed or 0 for r in rounds)
+        total_clinch = sum(r.clinch_strikes_landed or 0 for r in rounds)
+        total_ground = sum(r.ground_strikes_landed or 0 for r in rounds)
+        total_td = sum(r.takedowns_landed or 0 for r in rounds)
+        total_sub = sum(r.submissions_attempted or 0 for r in rounds)
+        total_ctrl = sum(r.control_time_seconds or 0 for r in rounds)
+
+        total_actions = total_sig + total_td * 3 + total_sub * 3 + 1  # Weight TDs and subs more
+
+        # Striker: high distance striking, low grappling
+        striker_signal = total_distance / max(total_actions, 1)
+        # Wrestler: high takedowns and control, moderate ground strikes
+        wrestler_signal = (total_td * 3 + total_ctrl / 30) / max(total_actions, 1)
+        # Grappler: high submissions and ground work
+        grappler_signal = (total_sub * 3 + total_ground + total_ctrl / 60) / max(total_actions, 1)
+
+        # Normalize to sum to 1
+        total_signal = striker_signal + wrestler_signal + grappler_signal + 0.01
+        striker_score = striker_signal / total_signal
+        wrestler_score = wrestler_signal / total_signal
+        grappler_score = grappler_signal / total_signal
+
+        # Balanced = how evenly distributed (1 = perfectly balanced)
+        scores = [striker_score, wrestler_score, grappler_score]
+        balanced_score = 1.0 - np.std(scores) * 3  # Low std = balanced
+        balanced_score = max(0, min(1, balanced_score))
+
+        return {
+            "striker_score": striker_score,
+            "grappler_score": grappler_score,
+            "wrestler_score": wrestler_score,
+            "balanced_score": balanced_score,
+        }
+
+    # Weight class ordering (lighter to heavier)
+    WEIGHT_CLASS_ORDER = {
+        "Strawweight": 115, "Women's Strawweight": 115,
+        "Flyweight": 125, "Women's Flyweight": 125,
+        "Bantamweight": 135, "Women's Bantamweight": 135,
+        "Featherweight": 145, "Women's Featherweight": 145,
+        "Lightweight": 155,
+        "Welterweight": 170,
+        "Middleweight": 185,
+        "Light Heavyweight": 205,
+        "Heavyweight": 265,
+    }
+
+    def _get_weight_class_movement(self, fighter_id: int, current_weight_class: str | None, before_date: date) -> dict:
+        """Detect if a fighter is moving up or down in weight.
+
+        Returns direction (positive = moving up, negative = moving down, 0 = same)
+        and number of fights at the current weight class.
+        """
+        fights = self.session.execute(
+            select(Fight)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+            .order_by(Event.date.desc())
+        ).scalars().all()
+
+        if not fights or not current_weight_class:
+            return {"direction": 0, "fights_at_weight": 0}
+
+        current_weight = self._weight_class_to_lbs(current_weight_class)
+
+        # Count fights at current weight and find most recent different weight
+        fights_at_weight = 0
+        last_different_weight = None
+        for f in fights:
+            wc = f.weight_class or ""
+            w = self._weight_class_to_lbs(wc)
+            if abs(w - current_weight) < 5:  # Same weight class (within 5 lbs)
+                fights_at_weight += 1
+            elif last_different_weight is None:
+                last_different_weight = w
+
+        direction = 0
+        if last_different_weight is not None:
+            if current_weight > last_different_weight:
+                direction = 1  # Moving up
+            elif current_weight < last_different_weight:
+                direction = -1  # Moving down
+
+        return {"direction": direction, "fights_at_weight": fights_at_weight}
+
+    def _weight_class_to_lbs(self, weight_class: str) -> int:
+        """Convert a weight class string to approximate pounds."""
+        for name, lbs in self.WEIGHT_CLASS_ORDER.items():
+            if name.lower() in weight_class.lower():
+                return lbs
+        # Try to extract a number from the string
+        import re
+        match = re.search(r"(\d{3})", weight_class)
+        if match:
+            return int(match.group(1))
+        return 170  # Default to welterweight
 
     def _get_opponent_quality(self, fighter_id: int, before_date: date) -> dict:
         """Compute opponent quality metrics (strength of schedule).

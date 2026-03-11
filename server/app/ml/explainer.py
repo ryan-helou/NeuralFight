@@ -41,6 +41,11 @@ FEATURE_TRANSLATIONS = {
     "avg_loss_dominance_recent_diff": "recent loss competitiveness",
     "finish_speed_diff": "finish speed (how quickly they stop opponents)",
     "been_finished_rate_diff": "been finished rate (KO/sub vulnerability)",
+    "layoff_diff": "time off between fights",
+    "strike_dropoff_diff": "cardio (strike output in late rounds)",
+    "late_round_win_rate_diff": "late-fight win rate",
+    "r1_output_diff": "round 1 striking output",
+    "r3_plus_output_diff": "round 3+ striking output",
 }
 
 

@@ -20,6 +20,16 @@ const FEATURE_SHORT_NAMES: Record<string, string> = {
   experience_diff: 'Experience',
   win_streak_diff: 'Win Streak',
   control_time_per_15min_diff: 'Control Time',
+  avg_opp_win_rate_diff: 'Opponent Quality',
+  avg_beaten_opp_win_rate_diff: 'Quality of Wins',
+  avg_lost_to_opp_win_rate_diff: 'Quality of Losses',
+  avg_win_dominance_diff: 'Win Dominance',
+  avg_loss_dominance_diff: 'Loss Competitiveness',
+  finish_speed_diff: 'Finish Speed',
+  been_finished_rate_diff: 'Finish Vulnerability',
+  layoff_diff: 'Ring Rust',
+  strike_dropoff_diff: 'Cardio',
+  late_round_win_rate_diff: 'Late-Fight Win Rate',
 };
 
 export default function RationalePanel({ prediction }: RationalePanelProps) {
