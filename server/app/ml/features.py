@@ -2,6 +2,13 @@
 
 Builds feature vectors from historical fight stats with strict temporal ordering
 to prevent data leakage. For each fight, only stats from prior fights are used.
+
+Key feature groups:
+- Physical attributes (height, reach, age)
+- Rolling performance stats (strikes, takedowns, control, etc.)
+- Opponent quality / strength of schedule
+- Win dominance scores (how decisively fights were won/lost)
+- Win streak and experience
 """
 
 from datetime import date
@@ -22,6 +29,8 @@ class FeatureBuilder:
 
     def __init__(self, session: Session):
         self.session = session
+        # Cache for opponent win rates to avoid repeated queries
+        self._win_rate_cache = {}
 
     def build_training_set(self) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Build the full training dataset from all historical fights.
@@ -29,11 +38,10 @@ class FeatureBuilder:
         Returns:
             (features_df, targets_df) where each row is one fight.
         """
-        # Load all fights with event dates, ordered chronologically
         fights = self.session.execute(
             select(Fight, Event.date)
             .join(Event, Fight.event_id == Event.id)
-            .where(Fight.result == "win")  # Only fights with a winner
+            .where(Fight.result == "win")
             .order_by(Event.date)
         ).all()
 
@@ -47,7 +55,6 @@ class FeatureBuilder:
 
             rows.append(features)
 
-            # Target: did fighter_2 win? (binary: 0 = f1 wins, 1 = f2 wins)
             winner_is_f2 = 1 if fight.winner_id == fight.fighter_2_id else 0
 
             targets.append({
@@ -90,7 +97,7 @@ class FeatureBuilder:
 
         features = {"fight_id": fight.id}
 
-        # Physical attributes
+        # === Physical attributes ===
         features["height_diff"] = (f1.height_inches or 70) - (f2.height_inches or 70)
         features["reach_diff"] = (f1.reach_inches or 70) - (f2.reach_inches or 70)
 
@@ -118,7 +125,7 @@ class FeatureBuilder:
         features["is_title_bout"] = int(fight.is_title_bout)
         features["bout_order"] = fight.bout_order or 0
 
-        # Per-fighter rolling stats and differentials
+        # === Rolling performance stats ===
         for window in self.WINDOWS:
             suffix = f"_last{window}" if window else "_career"
 
@@ -138,10 +145,36 @@ class FeatureBuilder:
                 features[f"f2_{key}{suffix}"] = f2_w.get(key, 0)
                 features[f"{key}_diff{suffix}"] = f1_w.get(key, 0) - f2_w.get(key, 0)
 
-        # Win streak
+        # === Win streak ===
         features["f1_win_streak"] = f1_stats["win_streak"]
         features["f2_win_streak"] = f2_stats["win_streak"]
         features["win_streak_diff"] = f1_stats["win_streak"] - f2_stats["win_streak"]
+
+        # === Opponent quality / strength of schedule ===
+        f1_opp = self._get_opponent_quality(f1.id, event_date)
+        f2_opp = self._get_opponent_quality(f2.id, event_date)
+
+        for key in [
+            "avg_opp_win_rate", "avg_beaten_opp_win_rate", "avg_lost_to_opp_win_rate",
+            "best_win_opp_rate", "worst_loss_opp_rate",
+            "avg_opp_win_rate_recent",
+        ]:
+            features[f"f1_{key}"] = f1_opp.get(key, 0.5)
+            features[f"f2_{key}"] = f2_opp.get(key, 0.5)
+            features[f"{key}_diff"] = f1_opp.get(key, 0.5) - f2_opp.get(key, 0.5)
+
+        # === Win dominance scores ===
+        f1_dom = self._get_dominance_stats(f1.id, event_date)
+        f2_dom = self._get_dominance_stats(f2.id, event_date)
+
+        for key in [
+            "avg_win_dominance", "avg_loss_dominance",
+            "avg_win_dominance_recent", "avg_loss_dominance_recent",
+            "finish_speed", "been_finished_rate",
+        ]:
+            features[f"f1_{key}"] = f1_dom.get(key, 0)
+            features[f"f2_{key}"] = f2_dom.get(key, 0)
+            features[f"{key}_diff"] = f1_dom.get(key, 0) - f2_dom.get(key, 0)
 
         return features
 
@@ -179,14 +212,7 @@ class FeatureBuilder:
     def _get_fighter_rolling_stats(
         self, fighter_id: int, before_date: date, window: int | None
     ) -> dict:
-        """Compute rolling performance stats for a fighter.
-
-        Args:
-            fighter_id: The fighter's database ID.
-            before_date: Only use fights before this date.
-            window: Number of recent fights to consider, or None for all.
-        """
-        # Get fights for this fighter before the cutoff date
+        """Compute rolling performance stats for a fighter."""
         query = (
             select(Fight, Event.date)
             .join(Event, Fight.event_id == Event.id)
@@ -205,7 +231,6 @@ class FeatureBuilder:
         if not fights:
             return {}
 
-        # Aggregate round stats across these fights
         fight_ids = [f.id for f, _ in fights]
         round_stats = self.session.execute(
             select(RoundStats).where(
@@ -216,7 +241,6 @@ class FeatureBuilder:
             )
         ).scalars().all()
 
-        # Also get opponent round stats for defense calculations
         opponent_round_stats = self.session.execute(
             select(RoundStats).where(
                 and_(
@@ -241,11 +265,10 @@ class FeatureBuilder:
                 total_time_min += (fight.total_rounds or 3) * 5
 
         if total_time_min == 0:
-            total_time_min = 1  # Avoid division by zero
+            total_time_min = 1
 
         num_fights = len(fights)
 
-        # Aggregate stats
         sig_landed = sum(r.sig_strikes_landed or 0 for r in round_stats)
         sig_attempted = sum(r.sig_strikes_attempted or 0 for r in round_stats)
         opp_sig_landed = sum(r.sig_strikes_landed or 0 for r in opponent_round_stats)
@@ -258,7 +281,6 @@ class FeatureBuilder:
         control_seconds = sum(r.control_time_seconds or 0 for r in round_stats)
         knockdowns = sum(r.knockdowns or 0 for r in round_stats)
 
-        # Win method counts
         wins_ko = sum(
             1 for f, _ in fights
             if f.winner_id == fighter_id and f.method_category == "ko_tko"
@@ -285,6 +307,218 @@ class FeatureBuilder:
             "avg_fight_time_min": total_time_min / num_fights,
             "win_rate": wins / num_fights,
         }
+
+    def _get_opponent_quality(self, fighter_id: int, before_date: date) -> dict:
+        """Compute opponent quality metrics (strength of schedule).
+
+        Measures: who did this fighter beat, and how good were those opponents?
+        Who did they lose to, and how good were those opponents?
+        """
+        fights = self.session.execute(
+            select(Fight, Event.date)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+            .order_by(Event.date.desc())
+        ).all()
+
+        if not fights:
+            return {}
+
+        all_opp_rates = []
+        beaten_opp_rates = []
+        lost_to_opp_rates = []
+
+        for fight, fight_date in fights:
+            # Identify opponent
+            opp_id = fight.fighter_2_id if fight.fighter_1_id == fighter_id else fight.fighter_1_id
+
+            # Get opponent's win rate at the time of this fight
+            opp_rate = self._get_win_rate_cached(opp_id, fight_date)
+            all_opp_rates.append(opp_rate)
+
+            if fight.winner_id == fighter_id:
+                beaten_opp_rates.append(opp_rate)
+            elif fight.winner_id == opp_id:
+                lost_to_opp_rates.append(opp_rate)
+
+        # Recent = last 3 fights
+        recent_opp_rates = all_opp_rates[:3]
+
+        return {
+            # Average win rate of all opponents faced
+            "avg_opp_win_rate": np.mean(all_opp_rates) if all_opp_rates else 0.5,
+            # Average win rate of opponents they beat (quality of wins)
+            "avg_beaten_opp_win_rate": np.mean(beaten_opp_rates) if beaten_opp_rates else 0.5,
+            # Average win rate of opponents they lost to (quality of losses)
+            "avg_lost_to_opp_win_rate": np.mean(lost_to_opp_rates) if lost_to_opp_rates else 0.5,
+            # Best win (highest win-rate opponent beaten)
+            "best_win_opp_rate": max(beaten_opp_rates) if beaten_opp_rates else 0.5,
+            # Worst loss (lowest win-rate opponent lost to)
+            "worst_loss_opp_rate": min(lost_to_opp_rates) if lost_to_opp_rates else 0.5,
+            # Recent opponent quality (last 3 fights)
+            "avg_opp_win_rate_recent": np.mean(recent_opp_rates) if recent_opp_rates else 0.5,
+        }
+
+    def _get_win_rate_cached(self, fighter_id: int, before_date: date) -> float:
+        """Get a fighter's win rate before a date, with caching."""
+        cache_key = (fighter_id, before_date)
+        if cache_key in self._win_rate_cache:
+            return self._win_rate_cache[cache_key]
+
+        fights = self.session.execute(
+            select(Fight)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+        ).scalars().all()
+
+        if not fights:
+            rate = 0.5  # No data, assume average
+        else:
+            wins = sum(1 for f in fights if f.winner_id == fighter_id)
+            rate = wins / len(fights)
+
+        self._win_rate_cache[cache_key] = rate
+        return rate
+
+    def _get_dominance_stats(self, fighter_id: int, before_date: date) -> dict:
+        """Compute win/loss dominance metrics.
+
+        Measures how decisively a fighter wins or loses, using round stats
+        as a proxy for scorecards.
+
+        Dominance score per fight (0-1 scale):
+        - Sig strike differential ratio
+        - Takedown differential ratio
+        - Control time share
+        - Knockdown advantage
+        - Finish bonus (KO/sub in early round = very dominant)
+        """
+        fights = self.session.execute(
+            select(Fight, Event.date)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+            .order_by(Event.date.desc())
+        ).all()
+
+        if not fights:
+            return {}
+
+        win_dominance_scores = []
+        loss_dominance_scores = []
+        finish_rounds = []  # How quickly they finish opponents
+        been_finished = 0
+        total_fights = len(fights)
+
+        for fight, _ in fights:
+            opp_id = fight.fighter_2_id if fight.fighter_1_id == fighter_id else fight.fighter_1_id
+            dominance = self._compute_fight_dominance(fight.id, fighter_id, opp_id)
+
+            if fight.winner_id == fighter_id:
+                win_dominance_scores.append(dominance)
+                # Track how fast they finish people
+                if fight.method_category in ("ko_tko", "submission") and fight.finish_round:
+                    max_rounds = fight.total_rounds or 3
+                    # Earlier finish = higher score. R1 of 3-rounder = 1.0, R3 = 0.33
+                    finish_rounds.append(1.0 - (fight.finish_round - 1) / max_rounds)
+            elif fight.winner_id == opp_id:
+                loss_dominance_scores.append(dominance)
+                if fight.method_category in ("ko_tko", "submission"):
+                    been_finished += 1
+
+        # Recent = last 3 fights
+        recent_wins = [s for i, (f, _) in enumerate(fights[:3])
+                       for s in [self._compute_fight_dominance(
+                           f.id, fighter_id,
+                           f.fighter_2_id if f.fighter_1_id == fighter_id else f.fighter_1_id
+                       )] if f.winner_id == fighter_id]
+        recent_losses = [s for i, (f, _) in enumerate(fights[:3])
+                         for s in [self._compute_fight_dominance(
+                             f.id, fighter_id,
+                             f.fighter_2_id if f.fighter_1_id == fighter_id else f.fighter_1_id
+                         )] if f.winner_id and f.winner_id != fighter_id]
+
+        return {
+            # How dominant their wins are (0-1, higher = more dominant)
+            "avg_win_dominance": np.mean(win_dominance_scores) if win_dominance_scores else 0.5,
+            # How badly they lose (0-1, higher = they performed better even in loss)
+            "avg_loss_dominance": np.mean(loss_dominance_scores) if loss_dominance_scores else 0.5,
+            # Recent dominance (last 3 fights)
+            "avg_win_dominance_recent": np.mean(recent_wins) if recent_wins else 0.5,
+            "avg_loss_dominance_recent": np.mean(recent_losses) if recent_losses else 0.5,
+            # How fast they finish opponents (0 = never finishes, 1 = always R1 finish)
+            "finish_speed": np.mean(finish_rounds) if finish_rounds else 0,
+            # How often they get finished (KO/sub'd)
+            "been_finished_rate": been_finished / max(total_fights - sum(1 for f, _ in fights if f.winner_id == fighter_id), 1),
+        }
+
+    def _compute_fight_dominance(self, fight_id: int, fighter_id: int, opp_id: int) -> float:
+        """Compute a dominance score for a single fight (0-1 scale).
+
+        Uses sig strike differential, takedown differential, control time share,
+        and knockdowns to estimate how one-sided the fight was.
+        """
+        fighter_rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(RoundStats.fight_id == fight_id, RoundStats.fighter_id == fighter_id)
+            )
+        ).scalars().all()
+
+        opp_rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(RoundStats.fight_id == fight_id, RoundStats.fighter_id == opp_id)
+            )
+        ).scalars().all()
+
+        if not fighter_rounds or not opp_rounds:
+            return 0.5  # No data, neutral
+
+        # Sig strikes
+        f_sig = sum(r.sig_strikes_landed or 0 for r in fighter_rounds)
+        o_sig = sum(r.sig_strikes_landed or 0 for r in opp_rounds)
+        total_sig = f_sig + o_sig
+        sig_share = f_sig / max(total_sig, 1)  # 0-1, 0.5 = even
+
+        # Takedowns
+        f_td = sum(r.takedowns_landed or 0 for r in fighter_rounds)
+        o_td = sum(r.takedowns_landed or 0 for r in opp_rounds)
+        total_td = f_td + o_td
+        td_share = f_td / max(total_td, 1) if total_td > 0 else 0.5
+
+        # Control time
+        f_ctrl = sum(r.control_time_seconds or 0 for r in fighter_rounds)
+        o_ctrl = sum(r.control_time_seconds or 0 for r in opp_rounds)
+        total_ctrl = f_ctrl + o_ctrl
+        ctrl_share = f_ctrl / max(total_ctrl, 1) if total_ctrl > 0 else 0.5
+
+        # Knockdowns
+        f_kd = sum(r.knockdowns or 0 for r in fighter_rounds)
+        o_kd = sum(r.knockdowns or 0 for r in opp_rounds)
+        kd_advantage = min(1.0, (f_kd - o_kd + 3) / 6)  # Normalize: -3 to +3 -> 0 to 1
+
+        # Weighted combination
+        dominance = (
+            0.35 * sig_share +       # Striking is the biggest factor
+            0.20 * td_share +         # Takedowns matter
+            0.25 * ctrl_share +       # Control time (grappling dominance)
+            0.20 * kd_advantage       # Knockdowns (fight-ending moments)
+        )
+
+        return dominance
 
 
 def _age_at_date(dob: date, event_date: date) -> float:

@@ -29,6 +29,18 @@ FEATURE_TRANSLATIONS = {
     "age_diff": "age difference",
     "experience_diff": "experience (total fights)",
     "win_streak_diff": "win streak",
+    "avg_opp_win_rate_diff": "opponent quality (strength of schedule)",
+    "avg_beaten_opp_win_rate_diff": "quality of wins (beaten opponents' win rate)",
+    "avg_lost_to_opp_win_rate_diff": "quality of losses (lost-to opponents' win rate)",
+    "best_win_opp_rate_diff": "best win quality",
+    "worst_loss_opp_rate_diff": "worst loss quality",
+    "avg_opp_win_rate_recent_diff": "recent opponent quality",
+    "avg_win_dominance_diff": "win dominance (how decisively they win)",
+    "avg_loss_dominance_diff": "loss competitiveness (how close their losses are)",
+    "avg_win_dominance_recent_diff": "recent win dominance",
+    "avg_loss_dominance_recent_diff": "recent loss competitiveness",
+    "finish_speed_diff": "finish speed (how quickly they stop opponents)",
+    "been_finished_rate_diff": "been finished rate (KO/sub vulnerability)",
 }
 
 
