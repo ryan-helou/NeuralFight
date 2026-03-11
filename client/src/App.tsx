@@ -1,0 +1,19 @@
+import { Routes, Route } from 'react-router-dom'
+import Layout from './components/layout/Layout'
+import HomePage from './pages/HomePage'
+import EventPage from './pages/EventPage'
+import FightPage from './pages/FightPage'
+import UpsetsPage from './pages/UpsetsPage'
+
+export default function App() {
+  return (
+    <Routes>
+      <Route element={<Layout />}>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/events/:id" element={<EventPage />} />
+        <Route path="/fights/:id" element={<FightPage />} />
+        <Route path="/upsets" element={<UpsetsPage />} />
+      </Route>
+    </Routes>
+  )
+}
