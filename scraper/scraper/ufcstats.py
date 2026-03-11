@@ -19,8 +19,8 @@ FIGHT_DETAIL_URL = f"{BASE_URL}/fight-details/"
 FIGHTER_DETAIL_URL = f"{BASE_URL}/fighter-details/"
 
 # Rate limiting: max concurrent requests and delay between batches
-MAX_CONCURRENT = 3
-REQUEST_DELAY = 1.0  # seconds between requests
+MAX_CONCURRENT = 10
+REQUEST_DELAY = 0.3  # seconds between requests
 
 
 class UFCStatsScraper:
