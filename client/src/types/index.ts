@@ -99,6 +99,20 @@ export interface Prediction {
   feature_importances: Array<{ name: string; shap_value: number }> | null;
 }
 
+export interface Odds {
+  fight_id: number;
+  source: string;
+  fighter_1_name: string;
+  fighter_2_name: string;
+  fighter_1_decimal: number;
+  fighter_2_decimal: number;
+  fighter_1_american: number;
+  fighter_2_american: number;
+  fighter_1_implied: number;
+  fighter_2_implied: number;
+  retrieved_at: string;
+}
+
 export interface Upset {
   fight_id: number;
   fighter_1_name: string;

@@ -1,8 +1,13 @@
 import api from './client';
-import type { FightDetail, Prediction, Upset } from '../types';
+import type { FightDetail, Odds, Prediction, Upset } from '../types';
 
 export async function getPrediction(fightId: number) {
   const { data } = await api.get<Prediction>(`/predictions/fight/${fightId}`);
+  return data;
+}
+
+export async function generatePrediction(fightId: number) {
+  const { data } = await api.post<Prediction>(`/predictions/fight/${fightId}`);
   return data;
 }
 
@@ -20,5 +25,10 @@ export async function getUpsets(minScore = 30) {
 
 export async function getFight(id: number) {
   const { data } = await api.get<FightDetail>(`/fights/${id}`);
+  return data;
+}
+
+export async function getOdds(fightId: number) {
+  const { data } = await api.get<Odds | null>(`/odds/fight/${fightId}`);
   return data;
 }

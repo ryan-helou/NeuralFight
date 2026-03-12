@@ -2,6 +2,8 @@ import type { Prediction } from '../../types';
 
 interface RationalePanelProps {
   prediction: Prediction;
+  fighter1Name?: string;
+  fighter2Name?: string;
 }
 
 const FEATURE_SHORT_NAMES: Record<string, string> = {
@@ -32,7 +34,7 @@ const FEATURE_SHORT_NAMES: Record<string, string> = {
   late_round_win_rate_diff: 'Late-Fight Win Rate',
 };
 
-export default function RationalePanel({ prediction }: RationalePanelProps) {
+export default function RationalePanel({ prediction, fighter1Name, fighter2Name }: RationalePanelProps) {
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
       <h3 className="text-sm text-gray-400 mb-3">AI Rationale</h3>
@@ -58,7 +60,7 @@ export default function RationalePanel({ prediction }: RationalePanelProps) {
                 <div key={i} className="flex items-center justify-between text-xs">
                   <span className="text-gray-400">{shortName}</span>
                   <span className={isPositive ? 'text-red-400' : 'text-blue-400'}>
-                    {isPositive ? 'Favors F2' : 'Favors F1'}
+                    {isPositive ? `Favors ${fighter2Name || 'F2'}` : `Favors ${fighter1Name || 'F1'}`}
                   </span>
                 </div>
               );

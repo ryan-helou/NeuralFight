@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
-import { getFight, getPrediction } from '../api/predictions';
+import { generatePrediction, getFight, getOdds, getPrediction } from '../api/predictions';
 import FighterComparison from '../components/fights/FighterComparison';
 import MethodBreakdown from '../components/predictions/MethodBreakdown';
 import PredictionBadge from '../components/predictions/PredictionBadge';
+import OddsComparison from '../components/predictions/OddsComparison';
 import RationalePanel from '../components/predictions/RationalePanel';
 import RoundProbabilities from '../components/predictions/RoundProbabilities';
 import UpsetAlert from '../components/predictions/UpsetAlert';
@@ -11,6 +12,7 @@ import UpsetAlert from '../components/predictions/UpsetAlert';
 export default function FightPage() {
   const { id } = useParams<{ id: string }>();
   const fightId = Number(id);
+  const queryClient = useQueryClient();
 
   const { data: fight, isLoading: fightLoading } = useQuery({
     queryKey: ['fight', fightId],
@@ -23,6 +25,18 @@ export default function FightPage() {
     queryFn: () => getPrediction(fightId),
     enabled: !isNaN(fightId),
     retry: false,
+  });
+
+  const { data: odds } = useQuery({
+    queryKey: ['odds', fightId],
+    queryFn: () => getOdds(fightId),
+    enabled: !isNaN(fightId),
+    retry: false,
+  });
+
+  const generate = useMutation({
+    mutationFn: () => generatePrediction(fightId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['prediction', fightId] }),
   });
 
   if (fightLoading) {
@@ -75,23 +89,42 @@ export default function FightPage() {
                 fighter1Prob={prediction.fighter_1_win_prob}
                 fighter2Prob={prediction.fighter_2_win_prob}
               />
-              <MethodBreakdown prediction={prediction} />
+              <MethodBreakdown prediction={prediction} fighter1Name={fight.fighter_1.name} fighter2Name={fight.fighter_2.name} />
               <RoundProbabilities prediction={prediction} />
             </>
           ) : (
             <div className="bg-gray-900 border border-gray-800 rounded-lg p-6 text-center">
               <p className="text-gray-500">No prediction available for this fight.</p>
-              <p className="text-gray-600 text-xs mt-1">Predictions are generated after model training.</p>
+              <button
+                onClick={() => generate.mutate()}
+                disabled={generate.isPending}
+                className="mt-3 px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-700 text-white text-sm rounded transition-colors"
+              >
+                {generate.isPending ? 'Generating...' : 'Generate Prediction'}
+              </button>
+              {generate.isError && (
+                <p className="text-red-400 text-xs mt-2">
+                  Failed to generate prediction. Fighter history may be insufficient.
+                </p>
+              )}
             </div>
           )}
         </div>
 
-        {/* Right: Rationale & Betting */}
+        {/* Right: Odds, Rationale & Betting */}
         <div className="space-y-6">
+          {odds && (
+            <OddsComparison
+              odds={odds}
+              prediction={prediction}
+              fighter1Name={fight.fighter_1.name}
+              fighter2Name={fight.fighter_2.name}
+            />
+          )}
           {prediction && (
             <>
               <UpsetAlert prediction={prediction} />
-              <RationalePanel prediction={prediction} />
+              <RationalePanel prediction={prediction} fighter1Name={fight.fighter_1.name} fighter2Name={fight.fighter_2.name} />
             </>
           )}
         </div>

@@ -3,6 +3,8 @@ import type { Prediction } from '../../types';
 
 interface MethodBreakdownProps {
   prediction: Prediction;
+  fighter1Name?: string;
+  fighter2Name?: string;
 }
 
 const METHOD_COLORS: Record<string, string> = {
@@ -17,7 +19,7 @@ const METHOD_LABELS: Record<string, string> = {
   decision: 'Decision',
 };
 
-export default function MethodBreakdown({ prediction }: MethodBreakdownProps) {
+export default function MethodBreakdown({ prediction, fighter1Name, fighter2Name }: MethodBreakdownProps) {
   const data = [
     { method: 'KO/TKO', prob: (prediction.ko_tko_prob ?? 0) * 100, fill: METHOD_COLORS.ko_tko },
     { method: 'Submission', prob: (prediction.submission_prob ?? 0) * 100, fill: METHOD_COLORS.submission },
@@ -53,7 +55,7 @@ export default function MethodBreakdown({ prediction }: MethodBreakdownProps) {
             return (
               <div key={fKey}>
                 <div className="text-gray-500 mb-1">
-                  {fKey === 'fighter_1' ? 'Fighter 1' : 'Fighter 2'}
+                  {fKey === 'fighter_1' ? (fighter1Name || 'Fighter 1') : (fighter2Name || 'Fighter 2')}
                 </div>
                 {Object.entries(methods).map(([m, p]) => (
                   <div key={m} className="flex justify-between text-gray-400">
