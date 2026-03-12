@@ -69,8 +69,17 @@ class Predictor:
 
         # Winner probabilities
         winner_probs = self._winner_model.predict_proba(X)[0]
-        f1_win = float(winner_probs[0])  # P(fighter_1 wins)
-        f2_win = float(winner_probs[1])  # P(fighter_2 wins)
+        if len(winner_probs) == 1:
+            # Single-column edge case from CalibratedClassifierCV
+            classes = self._winner_model.classes_
+            if classes[0] == 1:
+                f1_win = float(winner_probs[0])
+            else:
+                f1_win = 1.0 - float(winner_probs[0])
+            f2_win = 1.0 - f1_win
+        else:
+            f1_win = float(winner_probs[0])  # P(fighter_1 wins)
+            f2_win = float(winner_probs[1])  # P(fighter_2 wins)
 
         # Method probabilities (overall)
         method_probs_raw = self._method_model.predict_proba(X)[0]

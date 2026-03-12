@@ -18,6 +18,7 @@ import optuna
 import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
+from sklearn.model_selection import PredefinedSplit
 from sklearn.preprocessing import LabelEncoder
 
 logger = logging.getLogger(__name__)
@@ -125,7 +126,7 @@ def _train_binary_model(
         model = lgb.LGBMClassifier(**params)
         model.fit(X_train, y_train)
         preds = model.predict_proba(X_val)[:, 1]
-        return log_loss(y_val, preds)
+        return log_loss(y_val, preds, labels=[0, 1])
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study = optuna.create_study(direction="minimize")
@@ -135,14 +136,33 @@ def _train_binary_model(
     best_params["verbose"] = -1
     logger.info(f"Best binary params: {best_params}")
 
-    model = lgb.LGBMClassifier(**best_params)
-    model.fit(X_train, y_train)
+    # Calibrate using PredefinedSplit so only the val fold is used for calibration
+    X_combined = pd.concat([X_train, X_val], ignore_index=True)
+    y_combined = pd.concat([y_train, y_val], ignore_index=True)
+    # -1 = training fold (not used for calibration), 0 = validation fold
+    test_fold = np.array([-1] * len(X_train) + [0] * len(X_val))
+    ps = PredefinedSplit(test_fold)
 
-    # Calibrate probabilities
-    calibrated = CalibratedClassifierCV(model, cv="prefit", method="isotonic")
-    calibrated.fit(X_val, y_val)
+    calibrated = CalibratedClassifierCV(
+        lgb.LGBMClassifier(**best_params), cv=ps, method="sigmoid"
+    )
+    calibrated.fit(X_combined, y_combined)
 
     return calibrated
+
+
+def _pad_proba(probs: np.ndarray, model_classes: np.ndarray, num_class: int) -> np.ndarray:
+    """Pad predict_proba output to have columns for all expected classes.
+
+    LightGBM may return fewer columns if some classes weren't seen in training.
+    """
+    if probs.shape[1] == num_class:
+        return probs
+    padded = np.zeros((probs.shape[0], num_class))
+    for i, cls in enumerate(model_classes):
+        if cls < num_class:
+            padded[:, cls] = probs[:, i]
+    return padded
 
 
 def _train_multiclass_model(
@@ -168,8 +188,8 @@ def _train_multiclass_model(
         }
         model = lgb.LGBMClassifier(**params)
         model.fit(X_train, y_train)
-        preds = model.predict_proba(X_val)
-        return log_loss(y_val, preds)
+        preds = _pad_proba(model.predict_proba(X_val), model.classes_, num_class)
+        return log_loss(y_val, preds, labels=list(range(num_class)))
 
     optuna.logging.set_verbosity(optuna.logging.WARNING)
     study = optuna.create_study(direction="minimize")
@@ -180,21 +200,39 @@ def _train_multiclass_model(
     best_params["verbose"] = -1
     logger.info(f"Best multiclass params: {best_params}")
 
-    model = lgb.LGBMClassifier(**best_params)
-    model.fit(X_train, y_train)
+    # Calibrate using PredefinedSplit so only the val fold is used for calibration
+    X_combined = pd.concat(
+        [pd.DataFrame(X_train), pd.DataFrame(X_val)], ignore_index=True
+    )
+    y_combined = np.concatenate([y_train, y_val])
+    test_fold = np.array([-1] * len(X_train) + [0] * len(X_val))
+    ps = PredefinedSplit(test_fold)
 
-    calibrated = CalibratedClassifierCV(model, cv="prefit", method="isotonic")
-    calibrated.fit(X_val, y_val)
+    calibrated = CalibratedClassifierCV(
+        lgb.LGBMClassifier(**best_params), cv=ps, method="sigmoid"
+    )
+    calibrated.fit(X_combined, y_combined)
 
     return calibrated
 
 
+def _get_binary_probs(model, X: pd.DataFrame) -> np.ndarray:
+    """Get probability of class 1 from a model, handling single-column edge case."""
+    proba = model.predict_proba(X)
+    if proba.shape[1] == 1:
+        # Model only outputs one column — check which class it represents
+        if hasattr(model, "classes_") and model.classes_[0] == 1:
+            return proba[:, 0]
+        return 1 - proba[:, 0]
+    return proba[:, 1]
+
+
 def _evaluate_binary(model, X_test: pd.DataFrame, y_test: pd.Series, name: str):
     """Log evaluation metrics for a binary model."""
-    probs = model.predict_proba(X_test)[:, 1]
+    probs = _get_binary_probs(model, X_test)
     preds = (probs >= 0.5).astype(int)
     acc = accuracy_score(y_test, preds)
-    ll = log_loss(y_test, probs)
+    ll = log_loss(y_test, probs, labels=[0, 1])
     brier = brier_score_loss(y_test, probs)
     logger.info(f"{name} Model — Accuracy: {acc:.3f} | Log Loss: {ll:.3f} | Brier: {brier:.3f}")
 
@@ -204,7 +242,10 @@ def _evaluate_multiclass(
 ):
     """Log evaluation metrics for a multiclass model."""
     probs = model.predict_proba(X_test)
+    num_class = len(labels)
+    if probs.shape[1] != num_class:
+        probs = _pad_proba(probs, model.classes_, num_class)
     preds = model.predict(X_test)
     acc = accuracy_score(y_test, preds)
-    ll = log_loss(y_test, probs)
+    ll = log_loss(y_test, probs, labels=list(range(num_class)))
     logger.info(f"{name} Model — Accuracy: {acc:.3f} | Log Loss: {ll:.3f}")

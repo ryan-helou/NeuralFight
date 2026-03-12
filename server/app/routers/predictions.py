@@ -3,12 +3,24 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
-from app.database import get_session
+from app.database import get_session, get_sync_session
 from app.models import Event, Fight, Fighter, Prediction
 from app.schemas.prediction import PredictionOut, UpsetOut
+from app.services.prediction_service import PredictionService
 
 router = APIRouter(prefix="/api/predictions", tags=["predictions"])
+
+
+@router.post("/fight/{fight_id}", response_model=PredictionOut)
+def generate_prediction(fight_id: int, session: Session = Depends(get_sync_session)):
+    """Generate a prediction for a fight (sync, since ML inference is CPU-bound)."""
+    service = PredictionService(session)
+    prediction = service.get_or_create_prediction(fight_id)
+    if not prediction:
+        raise HTTPException(400, "Could not generate prediction. Fighter history may be insufficient.")
+    return prediction
 
 
 @router.get("/fight/{fight_id}", response_model=PredictionOut)

@@ -215,6 +215,112 @@ class FeatureBuilder:
             features[f"f2_{key}"] = f2_dom.get(key, 0)
             features[f"{key}_diff"] = f1_dom.get(key, 0) - f2_dom.get(key, 0)
 
+        # === Deep striking patterns ===
+        f1_striking = self._get_deep_striking_stats(f1.id, event_date)
+        f2_striking = self._get_deep_striking_stats(f2.id, event_date)
+        for key in [
+            "head_target_pct", "body_target_pct", "leg_target_pct",
+            "distance_pct", "clinch_pct", "ground_pct",
+            "head_accuracy", "body_accuracy", "leg_accuracy",
+            "head_defense", "body_defense", "leg_defense",
+            "striking_variety",  # How diverse their attack targets are
+            "distance_defense",  # Defense at range specifically
+        ]:
+            features[f"f1_{key}"] = f1_striking.get(key, 0)
+            features[f"f2_{key}"] = f2_striking.get(key, 0)
+            features[f"{key}_diff"] = f1_striking.get(key, 0) - f2_striking.get(key, 0)
+
+        # === Chin durability / damage absorption trends ===
+        f1_chin = self._get_chin_stats(f1.id, event_date)
+        f2_chin = self._get_chin_stats(f2.id, event_date)
+        for key in [
+            "kd_absorbed_rate", "kd_absorbed_trend",  # Getting knocked down more or less over time
+            "damage_absorbed_trend",  # Absorbing more strikes over career (chin fading?)
+            "times_knocked_down", "fights_since_last_kd_loss",
+            "ko_loss_rate", "sub_loss_rate", "dec_loss_rate",
+        ]:
+            features[f"f1_{key}"] = f1_chin.get(key, 0)
+            features[f"f2_{key}"] = f2_chin.get(key, 0)
+            features[f"{key}_diff"] = f1_chin.get(key, 0) - f2_chin.get(key, 0)
+
+        # === Comeback and momentum stats ===
+        f1_momentum = self._get_momentum_stats(f1.id, event_date)
+        f2_momentum = self._get_momentum_stats(f2.id, event_date)
+        for key in [
+            "comeback_rate",  # Won fights after losing a round
+            "fast_starter",  # R1 finish rate
+            "slow_starter",  # Lost R1 on stats but won the fight
+            "loss_streak",  # Current consecutive losses
+            "career_trajectory",  # Improving or declining (recent vs career win rate)
+            "finishing_streak",  # Consecutive finishes
+            "ufc_debut",  # Is this their first or second UFC fight?
+            "rounds_fought_total",
+        ]:
+            features[f"f1_{key}"] = f1_momentum.get(key, 0)
+            features[f"f2_{key}"] = f2_momentum.get(key, 0)
+            features[f"{key}_diff"] = f1_momentum.get(key, 0) - f2_momentum.get(key, 0)
+
+        # === Grappling deep dive ===
+        f1_grap = self._get_deep_grappling_stats(f1.id, event_date)
+        f2_grap = self._get_deep_grappling_stats(f2.id, event_date)
+        for key in [
+            "reversal_rate",  # How often they reverse position
+            "ground_strike_rate",  # Ground strikes per control minute
+            "top_control_pct",  # % of total control time they have (vs opponent)
+            "sub_per_td",  # Submission attempts per takedown landed
+            "td_defense_after_kd",  # Proxy: TD defense in fights where they got knocked down
+            "anti_wrestling",  # Win rate when being out-wrestled (opponent lands more TDs)
+        ]:
+            features[f"f1_{key}"] = f1_grap.get(key, 0)
+            features[f"f2_{key}"] = f2_grap.get(key, 0)
+            features[f"{key}_diff"] = f1_grap.get(key, 0) - f2_grap.get(key, 0)
+
+        # === Per-round performance patterns ===
+        f1_rounds = self._get_round_patterns(f1.id, event_date)
+        f2_rounds = self._get_round_patterns(f2.id, event_date)
+        for key in [
+            "r1_sig_per_min", "r2_sig_per_min", "r3_sig_per_min",
+            "r1_td_rate", "r2_td_rate", "r3_td_rate",
+            "r1_kd_rate", "r2_kd_rate", "r3_kd_rate",
+            "championship_round_output",  # R4-R5 sig strikes per min
+            "championship_round_experience",  # Number of R4+ rounds fought
+            "r1_finish_pct",  # % of finishes in R1
+            "late_finish_pct",  # % of finishes in R3+
+        ]:
+            features[f"f1_{key}"] = f1_rounds.get(key, 0)
+            features[f"f2_{key}"] = f2_rounds.get(key, 0)
+            features[f"{key}_diff"] = f1_rounds.get(key, 0) - f2_rounds.get(key, 0)
+
+        # === Fight pace and volume ===
+        f1_pace = self._get_pace_stats(f1.id, event_date)
+        f2_pace = self._get_pace_stats(f2.id, event_date)
+        for key in [
+            "total_strikes_per_min",  # Overall volume
+            "fight_pace",  # Combined strikes (both fighters) per min in their fights
+            "output_consistency",  # How consistent is their output round to round
+            "clinch_time_pct",  # Estimated % of fight in clinch
+            "ground_time_pct",  # Estimated % of fight on ground
+            "pressure_score",  # High output + forward movement proxy
+        ]:
+            features[f"f1_{key}"] = f1_pace.get(key, 0)
+            features[f"f2_{key}"] = f2_pace.get(key, 0)
+            features[f"{key}_diff"] = f1_pace.get(key, 0) - f2_pace.get(key, 0)
+
+        # === Method vulnerability matchup ===
+        # How likely each fighter is to lose by each method, crossed with
+        # opponent's ability to win by that method
+        f1_rolling = self._get_fighter_rolling_stats(f1.id, event_date, None)
+        f2_rolling = self._get_fighter_rolling_stats(f2.id, event_date, None)
+        # F1's KO power vs F2's KO vulnerability
+        features["f1_ko_vs_f2_chin"] = f1_rolling.get("finish_rate_ko", 0) * f2_chin.get("ko_loss_rate", 0)
+        features["f2_ko_vs_f1_chin"] = f2_rolling.get("finish_rate_ko", 0) * f1_chin.get("ko_loss_rate", 0)
+        # F1's sub game vs F2's sub vulnerability
+        features["f1_sub_vs_f2_subdef"] = f1_rolling.get("finish_rate_sub", 0) * f2_chin.get("sub_loss_rate", 0)
+        features["f2_sub_vs_f1_subdef"] = f2_rolling.get("finish_rate_sub", 0) * f1_chin.get("sub_loss_rate", 0)
+        # Striker vs wrestler matchup specifics
+        features["f1_striking_vs_f2_wrestling"] = f1_striking.get("distance_pct", 0) * f2_grap.get("top_control_pct", 0)
+        features["f2_striking_vs_f1_wrestling"] = f2_striking.get("distance_pct", 0) * f1_grap.get("top_control_pct", 0)
+
         return features
 
     def _get_fighter_career_stats(self, fighter_id: int, before_date: date) -> dict:
@@ -345,6 +451,472 @@ class FeatureBuilder:
             "finish_rate_sub": wins_sub / max(wins, 1),
             "avg_fight_time_min": total_time_min / num_fights,
             "win_rate": wins / num_fights,
+        }
+
+    def _get_deep_striking_stats(self, fighter_id: int, before_date: date) -> dict:
+        """Deep striking breakdown: target selection, accuracy by target, variety."""
+        fights = self.session.execute(
+            select(Fight)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+        ).scalars().all()
+
+        if not fights:
+            return {}
+
+        fight_ids = [f.id for f in fights]
+        my_rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(RoundStats.fight_id.in_(fight_ids), RoundStats.fighter_id == fighter_id)
+            )
+        ).scalars().all()
+        opp_rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(RoundStats.fight_id.in_(fight_ids), RoundStats.fighter_id != fighter_id)
+            )
+        ).scalars().all()
+
+        if not my_rounds:
+            return {}
+
+        # My strikes by target
+        head_l = sum(r.head_strikes_landed or 0 for r in my_rounds)
+        head_a = sum(r.head_strikes_attempted or 0 for r in my_rounds)
+        body_l = sum(r.body_strikes_landed or 0 for r in my_rounds)
+        body_a = sum(r.body_strikes_attempted or 0 for r in my_rounds)
+        leg_l = sum(r.leg_strikes_landed or 0 for r in my_rounds)
+        leg_a = sum(r.leg_strikes_attempted or 0 for r in my_rounds)
+        dist_l = sum(r.distance_strikes_landed or 0 for r in my_rounds)
+        dist_a = sum(r.distance_strikes_attempted or 0 for r in my_rounds)
+        clinch_l = sum(r.clinch_strikes_landed or 0 for r in my_rounds)
+        clinch_a = sum(r.clinch_strikes_attempted or 0 for r in my_rounds)
+        ground_l = sum(r.ground_strikes_landed or 0 for r in my_rounds)
+        ground_a = sum(r.ground_strikes_attempted or 0 for r in my_rounds)
+
+        total_landed = head_l + body_l + leg_l
+        total_by_pos = dist_l + clinch_l + ground_l
+
+        # Opponent strikes at me by target (for defense)
+        opp_head_l = sum(r.head_strikes_landed or 0 for r in opp_rounds)
+        opp_head_a = sum(r.head_strikes_attempted or 0 for r in opp_rounds)
+        opp_body_l = sum(r.body_strikes_landed or 0 for r in opp_rounds)
+        opp_body_a = sum(r.body_strikes_attempted or 0 for r in opp_rounds)
+        opp_leg_l = sum(r.leg_strikes_landed or 0 for r in opp_rounds)
+        opp_leg_a = sum(r.leg_strikes_attempted or 0 for r in opp_rounds)
+        opp_dist_l = sum(r.distance_strikes_landed or 0 for r in opp_rounds)
+        opp_dist_a = sum(r.distance_strikes_attempted or 0 for r in opp_rounds)
+
+        # Striking variety: entropy of target distribution (higher = more diverse)
+        probs = []
+        if total_landed > 0:
+            probs = [head_l / total_landed, body_l / total_landed, leg_l / total_landed]
+        variety = -sum(p * np.log(max(p, 1e-10)) for p in probs) / np.log(3) if probs else 0
+
+        return {
+            "head_target_pct": head_l / max(total_landed, 1),
+            "body_target_pct": body_l / max(total_landed, 1),
+            "leg_target_pct": leg_l / max(total_landed, 1),
+            "distance_pct": dist_l / max(total_by_pos, 1),
+            "clinch_pct": clinch_l / max(total_by_pos, 1),
+            "ground_pct": ground_l / max(total_by_pos, 1),
+            "head_accuracy": head_l / max(head_a, 1),
+            "body_accuracy": body_l / max(body_a, 1),
+            "leg_accuracy": leg_l / max(leg_a, 1),
+            "head_defense": 1 - (opp_head_l / max(opp_head_a, 1)),
+            "body_defense": 1 - (opp_body_l / max(opp_body_a, 1)),
+            "leg_defense": 1 - (opp_leg_l / max(opp_leg_a, 1)),
+            "striking_variety": variety,
+            "distance_defense": 1 - (opp_dist_l / max(opp_dist_a, 1)),
+        }
+
+    def _get_chin_stats(self, fighter_id: int, before_date: date) -> dict:
+        """Chin durability, damage absorption trends, loss method breakdown."""
+        fights = self.session.execute(
+            select(Fight, Event.date)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+            .order_by(Event.date)  # Chronological for trend
+        ).all()
+
+        if not fights:
+            return {}
+
+        total = len(fights)
+        losses = [(f, d) for f, d in fights if f.winner_id and f.winner_id != fighter_id]
+        ko_losses = sum(1 for f, _ in losses if f.method_category == "ko_tko")
+        sub_losses = sum(1 for f, _ in losses if f.method_category == "submission")
+        dec_losses = sum(1 for f, _ in losses if f.method_category == "decision")
+        total_losses = len(losses)
+
+        # Knockdowns absorbed over career
+        fight_ids = [f.id for f, _ in fights]
+        opp_rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(RoundStats.fight_id.in_(fight_ids), RoundStats.fighter_id != fighter_id)
+            )
+        ).scalars().all()
+
+        # Group KDs by fight for trend analysis
+        total_kds = 0
+        kds_per_fight = []
+        absorbed_per_fight = []
+
+        for fight, _ in fights:
+            fight_opp_rounds = [r for r in opp_rounds if r.fight_id == fight.id]
+            fight_kds = sum(r.knockdowns or 0 for r in fight_opp_rounds)
+            fight_absorbed = sum(r.sig_strikes_landed or 0 for r in fight_opp_rounds)
+            total_kds += fight_kds
+            kds_per_fight.append(fight_kds)
+            absorbed_per_fight.append(fight_absorbed)
+
+        # Trend: compare first half vs second half of career
+        if len(kds_per_fight) >= 4:
+            mid = len(kds_per_fight) // 2
+            early_kd = np.mean(kds_per_fight[:mid])
+            late_kd = np.mean(kds_per_fight[mid:])
+            kd_trend = late_kd - early_kd  # Positive = getting knocked down more (chin fading)
+
+            early_absorbed = np.mean(absorbed_per_fight[:mid])
+            late_absorbed = np.mean(absorbed_per_fight[mid:])
+            damage_trend = (late_absorbed - early_absorbed) / max(early_absorbed, 1)
+        else:
+            kd_trend = 0
+            damage_trend = 0
+
+        # Fights since last KO/TKO loss
+        fights_since_ko_loss = 0
+        for f, _ in reversed(fights):
+            if f.winner_id and f.winner_id != fighter_id and f.method_category == "ko_tko":
+                break
+            fights_since_ko_loss += 1
+
+        return {
+            "kd_absorbed_rate": total_kds / max(total, 1),
+            "kd_absorbed_trend": kd_trend,
+            "damage_absorbed_trend": damage_trend,
+            "times_knocked_down": total_kds,
+            "fights_since_last_kd_loss": fights_since_ko_loss,
+            "ko_loss_rate": ko_losses / max(total_losses, 1),
+            "sub_loss_rate": sub_losses / max(total_losses, 1),
+            "dec_loss_rate": dec_losses / max(total_losses, 1),
+        }
+
+    def _get_momentum_stats(self, fighter_id: int, before_date: date) -> dict:
+        """Comeback ability, fast/slow starter, trajectory, streaks."""
+        fights = self.session.execute(
+            select(Fight, Event.date)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+            .order_by(Event.date.desc())
+        ).all()
+
+        if not fights:
+            return {}
+
+        total = len(fights)
+        wins = sum(1 for f, _ in fights if f.winner_id == fighter_id)
+
+        # Loss streak
+        loss_streak = 0
+        for f, _ in fights:
+            if f.winner_id and f.winner_id != fighter_id:
+                loss_streak += 1
+            else:
+                break
+
+        # Finishing streak (consecutive finishes)
+        finishing_streak = 0
+        for f, _ in fights:
+            if f.winner_id == fighter_id and f.method_category in ("ko_tko", "submission"):
+                finishing_streak += 1
+            else:
+                break
+
+        # Career trajectory: last 3 win rate vs career win rate
+        recent_3 = fights[:3]
+        recent_wins = sum(1 for f, _ in recent_3 if f.winner_id == fighter_id)
+        recent_rate = recent_wins / max(len(recent_3), 1)
+        career_rate = wins / max(total, 1)
+        trajectory = recent_rate - career_rate  # Positive = improving
+
+        # R1 finish rate (fast starter)
+        r1_finishes = sum(
+            1 for f, _ in fights
+            if f.winner_id == fighter_id and f.finish_round == 1 and f.method_category in ("ko_tko", "submission")
+        )
+
+        # Comeback rate: won after losing R1 on stats
+        comebacks = 0
+        multi_round_wins = 0
+        for fight, _ in fights:
+            if fight.winner_id != fighter_id:
+                continue
+            if not fight.finish_round or fight.finish_round < 2:
+                continue
+            # Check if they were "losing" R1
+            r1_stats = self.session.execute(
+                select(RoundStats).where(
+                    and_(RoundStats.fight_id == fight.id, RoundStats.round_number == 1)
+                )
+            ).scalars().all()
+
+            my_r1 = [r for r in r1_stats if r.fighter_id == fighter_id]
+            opp_r1 = [r for r in r1_stats if r.fighter_id != fighter_id]
+            if my_r1 and opp_r1:
+                my_sig = my_r1[0].sig_strikes_landed or 0
+                opp_sig = opp_r1[0].sig_strikes_landed or 0
+                multi_round_wins += 1
+                if opp_sig > my_sig:
+                    comebacks += 1
+
+        # Slow starter: won fight but got outstruck in R1
+        slow_starter = comebacks / max(multi_round_wins, 1)
+
+        # UFC debut flag
+        ufc_debut = 1 if total <= 1 else 0
+
+        # Total rounds fought
+        rounds_total = sum(
+            f.finish_round or f.total_rounds or 3 for f, _ in fights
+        )
+
+        return {
+            "comeback_rate": comebacks / max(multi_round_wins, 1),
+            "fast_starter": r1_finishes / max(wins, 1),
+            "slow_starter": slow_starter,
+            "loss_streak": loss_streak,
+            "career_trajectory": trajectory,
+            "finishing_streak": finishing_streak,
+            "ufc_debut": ufc_debut,
+            "rounds_fought_total": rounds_total,
+        }
+
+    def _get_deep_grappling_stats(self, fighter_id: int, before_date: date) -> dict:
+        """Deep grappling: reversals, ground work efficiency, anti-wrestling."""
+        fights = self.session.execute(
+            select(Fight)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+        ).scalars().all()
+
+        if not fights:
+            return {}
+
+        fight_ids = [f.id for f in fights]
+        my_rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(RoundStats.fight_id.in_(fight_ids), RoundStats.fighter_id == fighter_id)
+            )
+        ).scalars().all()
+        opp_rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(RoundStats.fight_id.in_(fight_ids), RoundStats.fighter_id != fighter_id)
+            )
+        ).scalars().all()
+
+        if not my_rounds:
+            return {}
+
+        total_rounds = len(my_rounds)
+        my_reversals = sum(r.reversals or 0 for r in my_rounds)
+        my_td = sum(r.takedowns_landed or 0 for r in my_rounds)
+        my_sub = sum(r.submissions_attempted or 0 for r in my_rounds)
+        my_ctrl = sum(r.control_time_seconds or 0 for r in my_rounds)
+        my_ground = sum(r.ground_strikes_landed or 0 for r in my_rounds)
+
+        opp_td = sum(r.takedowns_landed or 0 for r in opp_rounds)
+        opp_ctrl = sum(r.control_time_seconds or 0 for r in opp_rounds)
+
+        total_ctrl = my_ctrl + opp_ctrl
+
+        # Ground strike rate: strikes per minute of control
+        ground_strike_rate = my_ground / max(my_ctrl / 60, 0.1) if my_ctrl > 0 else 0
+
+        # Anti-wrestling: win rate in fights where opponent lands more TDs
+        anti_wrestling_wins = 0
+        anti_wrestling_total = 0
+        for fight in fights:
+            fight_my = [r for r in my_rounds if r.fight_id == fight.id]
+            fight_opp = [r for r in opp_rounds if r.fight_id == fight.id]
+            my_fight_td = sum(r.takedowns_landed or 0 for r in fight_my)
+            opp_fight_td = sum(r.takedowns_landed or 0 for r in fight_opp)
+            if opp_fight_td > my_fight_td:
+                anti_wrestling_total += 1
+                if fight.winner_id == fighter_id:
+                    anti_wrestling_wins += 1
+
+        return {
+            "reversal_rate": my_reversals / max(total_rounds, 1),
+            "ground_strike_rate": ground_strike_rate,
+            "top_control_pct": my_ctrl / max(total_ctrl, 1),
+            "sub_per_td": my_sub / max(my_td, 1),
+            "td_defense_after_kd": 0,  # Would need per-sequence data we don't have
+            "anti_wrestling": anti_wrestling_wins / max(anti_wrestling_total, 1),
+        }
+
+    def _get_round_patterns(self, fighter_id: int, before_date: date) -> dict:
+        """Per-round performance breakdown and championship round experience."""
+        fights = self.session.execute(
+            select(Fight)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+        ).scalars().all()
+
+        if not fights:
+            return {}
+
+        fight_ids = [f.id for f in fights]
+        my_rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(RoundStats.fight_id.in_(fight_ids), RoundStats.fighter_id == fighter_id)
+            )
+        ).scalars().all()
+
+        if not my_rounds:
+            return {}
+
+        # Group stats by round number
+        round_sig = {}  # {round_num: [sig_strikes_landed, ...]}
+        round_td = {}
+        round_kd = {}
+        for r in my_rounds:
+            rn = r.round_number
+            round_sig.setdefault(rn, []).append(r.sig_strikes_landed or 0)
+            round_td.setdefault(rn, []).append(r.takedowns_landed or 0)
+            round_kd.setdefault(rn, []).append(r.knockdowns or 0)
+
+        # 5 min per round assumed
+        def avg_per_min(vals):
+            return np.mean(vals) / 5 if vals else 0
+
+        # Championship rounds (R4+R5)
+        champ_sig = round_sig.get(4, []) + round_sig.get(5, [])
+        champ_experience = len(round_sig.get(4, [])) + len(round_sig.get(5, []))
+
+        # Finish distributions
+        wins = [f for f in fights if f.winner_id == fighter_id]
+        finishes = [f for f in wins if f.method_category in ("ko_tko", "submission")]
+        r1_finishes = sum(1 for f in finishes if f.finish_round == 1)
+        late_finishes = sum(1 for f in finishes if f.finish_round and f.finish_round >= 3)
+
+        return {
+            "r1_sig_per_min": avg_per_min(round_sig.get(1, [])),
+            "r2_sig_per_min": avg_per_min(round_sig.get(2, [])),
+            "r3_sig_per_min": avg_per_min(round_sig.get(3, [])),
+            "r1_td_rate": np.mean(round_td.get(1, [0])),
+            "r2_td_rate": np.mean(round_td.get(2, [0])),
+            "r3_td_rate": np.mean(round_td.get(3, [0])),
+            "r1_kd_rate": np.mean(round_kd.get(1, [0])),
+            "r2_kd_rate": np.mean(round_kd.get(2, [0])),
+            "r3_kd_rate": np.mean(round_kd.get(3, [0])),
+            "championship_round_output": avg_per_min(champ_sig),
+            "championship_round_experience": champ_experience,
+            "r1_finish_pct": r1_finishes / max(len(finishes), 1),
+            "late_finish_pct": late_finishes / max(len(finishes), 1),
+        }
+
+    def _get_pace_stats(self, fighter_id: int, before_date: date) -> dict:
+        """Fight pace, volume, consistency, and positional breakdown."""
+        fights = self.session.execute(
+            select(Fight)
+            .join(Event, Fight.event_id == Event.id)
+            .where(
+                and_(
+                    Event.date < before_date,
+                    (Fight.fighter_1_id == fighter_id) | (Fight.fighter_2_id == fighter_id),
+                )
+            )
+        ).scalars().all()
+
+        if not fights:
+            return {}
+
+        fight_ids = [f.id for f in fights]
+        my_rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(RoundStats.fight_id.in_(fight_ids), RoundStats.fighter_id == fighter_id)
+            )
+        ).scalars().all()
+        opp_rounds = self.session.execute(
+            select(RoundStats).where(
+                and_(RoundStats.fight_id.in_(fight_ids), RoundStats.fighter_id != fighter_id)
+            )
+        ).scalars().all()
+
+        if not my_rounds:
+            return {}
+
+        # Total fight time
+        total_time_min = 0
+        for fight in fights:
+            if fight.finish_round and fight.finish_time:
+                parts = fight.finish_time.split(":")
+                try:
+                    mins = int(parts[0])
+                    secs = int(parts[1]) if len(parts) > 1 else 0
+                    total_time_min += (fight.finish_round - 1) * 5 + mins + secs / 60
+                except (ValueError, IndexError):
+                    total_time_min += (fight.total_rounds or 3) * 5
+            else:
+                total_time_min += (fight.total_rounds or 3) * 5
+        total_time_min = max(total_time_min, 1)
+
+        my_total = sum(r.total_strikes_landed or 0 for r in my_rounds)
+        opp_total = sum(r.total_strikes_landed or 0 for r in opp_rounds)
+        my_clinch = sum(r.clinch_strikes_landed or 0 for r in my_rounds)
+        my_ground = sum(r.ground_strikes_landed or 0 for r in my_rounds)
+        my_ctrl = sum(r.control_time_seconds or 0 for r in my_rounds)
+        opp_ctrl = sum(r.control_time_seconds or 0 for r in opp_rounds)
+
+        # Per-round output for consistency
+        round_outputs = []
+        for r in my_rounds:
+            round_outputs.append(r.sig_strikes_landed or 0)
+        output_std = np.std(round_outputs) if len(round_outputs) > 1 else 0
+        output_mean = np.mean(round_outputs) if round_outputs else 0
+        consistency = 1 - (output_std / max(output_mean, 1))  # Higher = more consistent
+
+        # Positional time estimates (rough from strike distribution)
+        total_strikes = my_clinch + my_ground + sum(r.distance_strikes_landed or 0 for r in my_rounds) + 1
+        clinch_time = my_clinch / total_strikes
+        ground_time = my_ground / total_strikes + (my_ctrl + opp_ctrl) / max(total_time_min * 60, 1)
+        ground_time = min(ground_time, 1.0)
+
+        # Pressure score: high output + forward pressure proxy (landing more than absorbing)
+        pressure = (my_total - opp_total) / max(total_time_min, 1)
+
+        return {
+            "total_strikes_per_min": my_total / total_time_min,
+            "fight_pace": (my_total + opp_total) / total_time_min,
+            "output_consistency": max(0, consistency),
+            "clinch_time_pct": clinch_time,
+            "ground_time_pct": ground_time,
+            "pressure_score": pressure,
         }
 
     def _get_layoff_days(self, fighter_id: int, event_date: date) -> int:
