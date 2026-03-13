@@ -31,3 +31,22 @@ class UpsetOut(BaseModel):
     betting_confidence: float | None
 
     model_config = {"from_attributes": True}
+
+
+class ValueBetOut(BaseModel):
+    fight_id: int
+    fighter_1_name: str
+    fighter_2_name: str
+    event_name: str
+    event_date: str
+    fighter_1_win_prob: float
+    fighter_2_win_prob: float
+    bet_on: str
+    edge: float
+    bet_amount: float
+    american_odds: int
+    decimal_odds: float
+    vegas_implied: float
+    ai_prob: float
+
+    model_config = {"from_attributes": True}

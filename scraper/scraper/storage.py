@@ -57,9 +57,14 @@ class Storage:
             session.commit()
 
     def store_event(self, event: ScrapedEvent):
-        """Store an event and all its fights and round stats."""
+        """Store an event and all its fights and round stats.
+
+        If a BFO-created event (ufcstats_hash starting with 'bfo-') already
+        exists with a matching name, it is upgraded in place so that odds
+        records linked to its fights are preserved.
+        """
         with Session(self.engine) as session:
-            # Check if event already exists
+            # Check if event already exists by ufcstats_hash
             existing_event = session.execute(
                 select(Event).where(Event.ufcstats_hash == event.ufcstats_hash)
             ).scalar_one_or_none()
@@ -68,15 +73,31 @@ class Storage:
                 logger.info(f"Event {event.name} already exists, skipping")
                 return
 
-            # Create event
-            db_event = Event(
-                name=event.name,
-                date=event.date,
-                location=event.location,
-                ufcstats_hash=event.ufcstats_hash,
-            )
-            session.add(db_event)
-            session.flush()
+            # Check for a BFO-created event with the same name to merge into
+            bfo_event = session.execute(
+                select(Event).where(
+                    Event.ufcstats_hash.like("bfo-%"),
+                    Event.name == event.name,
+                )
+            ).scalar_one_or_none()
+
+            if bfo_event:
+                # Upgrade the BFO event with real UFCStats data
+                bfo_event.ufcstats_hash = event.ufcstats_hash
+                bfo_event.date = event.date
+                bfo_event.location = event.location
+                db_event = bfo_event
+                logger.info(f"Merging UFCStats data into existing BFO event: {event.name}")
+            else:
+                # Create new event
+                db_event = Event(
+                    name=event.name,
+                    date=event.date,
+                    location=event.location,
+                    ufcstats_hash=event.ufcstats_hash,
+                )
+                session.add(db_event)
+                session.flush()
 
             # Create fights
             for fight in event.fights:
@@ -95,6 +116,17 @@ class Storage:
                     )
                     continue
 
+                # Check if this fight already exists (from BFO) — match by fighters + event
+                existing_fight = session.execute(
+                    select(Fight).where(
+                        Fight.event_id == db_event.id,
+                        (
+                            ((Fight.fighter_1_id == f1.id) & (Fight.fighter_2_id == f2.id))
+                            | ((Fight.fighter_1_id == f2.id) & (Fight.fighter_2_id == f1.id))
+                        ),
+                    )
+                ).scalar_one_or_none()
+
                 # Determine winner ID
                 winner_id = None
                 if fight.winner_name == fight.fighter_1_name:
@@ -102,24 +134,40 @@ class Storage:
                 elif fight.winner_name == fight.fighter_2_name:
                     winner_id = f2.id
 
-                db_fight = Fight(
-                    event_id=db_event.id,
-                    fighter_1_id=f1.id,
-                    fighter_2_id=f2.id,
-                    winner_id=winner_id,
-                    weight_class=fight.weight_class,
-                    is_title_bout=fight.is_title_bout,
-                    method=fight.method,
-                    method_category=fight.method_category,
-                    finish_round=fight.finish_round,
-                    finish_time=fight.finish_time,
-                    total_rounds=fight.total_rounds,
-                    referee=fight.referee,
-                    result=fight.result,
-                    bout_order=fight.bout_order,
-                )
-                session.add(db_fight)
-                session.flush()
+                if existing_fight:
+                    # Update the BFO-created fight with results
+                    existing_fight.winner_id = winner_id
+                    existing_fight.weight_class = fight.weight_class
+                    existing_fight.is_title_bout = fight.is_title_bout
+                    existing_fight.method = fight.method
+                    existing_fight.method_category = fight.method_category
+                    existing_fight.finish_round = fight.finish_round
+                    existing_fight.finish_time = fight.finish_time
+                    existing_fight.total_rounds = fight.total_rounds
+                    existing_fight.referee = fight.referee
+                    existing_fight.result = fight.result
+                    existing_fight.bout_order = fight.bout_order
+                    db_fight = existing_fight
+                    logger.info(f"Updated existing fight: {fight.fighter_1_name} vs {fight.fighter_2_name}")
+                else:
+                    db_fight = Fight(
+                        event_id=db_event.id,
+                        fighter_1_id=f1.id,
+                        fighter_2_id=f2.id,
+                        winner_id=winner_id,
+                        weight_class=fight.weight_class,
+                        is_title_bout=fight.is_title_bout,
+                        method=fight.method,
+                        method_category=fight.method_category,
+                        finish_round=fight.finish_round,
+                        finish_time=fight.finish_time,
+                        total_rounds=fight.total_rounds,
+                        referee=fight.referee,
+                        result=fight.result,
+                        bout_order=fight.bout_order,
+                    )
+                    session.add(db_fight)
+                    session.flush()
 
                 # Create round stats
                 for rs in fight.round_stats:

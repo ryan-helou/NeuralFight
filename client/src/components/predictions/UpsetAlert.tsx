@@ -1,63 +1,137 @@
-import type { Prediction } from '../../types';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { cn } from '@/lib/utils';
+import type { Odds, Prediction } from '../../types';
 
-interface UpsetAlertProps {
+interface ValueBetProps {
   prediction: Prediction;
+  odds: Odds | null | undefined;
+  fighter1Name: string;
+  fighter2Name: string;
+  winnerName?: string | null;
 }
 
-export default function UpsetAlert({ prediction }: UpsetAlertProps) {
-  const score = prediction.upset_score;
-  const confidence = prediction.betting_confidence;
-
-  if (score === null || score === undefined) {
+export default function ValueBet({ prediction, odds, fighter1Name, fighter2Name, winnerName }: ValueBetProps) {
+  if (!odds) {
     return (
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-        <h3 className="text-sm text-gray-400 mb-2">Betting Analysis</h3>
-        <p className="text-gray-500 text-sm">No betting odds available for this fight.</p>
-      </div>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-medium text-muted-foreground">Value Bet</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">No betting odds available for this fight.</p>
+        </CardContent>
+      </Card>
     );
   }
 
-  const severity = score >= 60 ? 'high' : score >= 30 ? 'medium' : 'low';
-  const colors = {
-    high: 'border-red-500 bg-red-500/10',
-    medium: 'border-yellow-500 bg-yellow-500/10',
-    low: 'border-gray-700 bg-gray-900',
-  };
+  const impliedF1 = odds.fighter_1_implied;
+  const impliedF2 = odds.fighter_2_implied;
+  const aiF1 = prediction.fighter_1_win_prob;
+  const aiF2 = prediction.fighter_2_win_prob;
+
+  const edgeF1 = aiF1 - impliedF1;
+  const edgeF2 = aiF2 - impliedF2;
+  const bestEdge = Math.max(edgeF1, edgeF2);
+
+  const hasBet = bestEdge >= 0.03;
+
+  let betOn: string | null = null;
+  let betEdge = 0;
+  let betOddsAmerican = 0;
+  let betOddsDecimal = 0;
+  let betAmount = 0;
+  let aiProb = 0;
+  let vegasImplied = 0;
+
+  if (hasBet) {
+    if (edgeF1 > edgeF2) {
+      betOn = fighter1Name;
+      betEdge = edgeF1;
+      betOddsAmerican = odds.fighter_1_american;
+      betOddsDecimal = odds.fighter_1_decimal;
+      aiProb = aiF1;
+      vegasImplied = impliedF1;
+    } else {
+      betOn = fighter2Name;
+      betEdge = edgeF2;
+      betOddsAmerican = odds.fighter_2_american;
+      betOddsDecimal = odds.fighter_2_decimal;
+      aiProb = aiF2;
+      vegasImplied = impliedF2;
+    }
+    betAmount = Math.min(100 * (betEdge / 0.05), 500);
+  }
+
+  const fmtAmerican = (o: number) => (o > 0 ? `+${o}` : `${o}`);
+
+  // P&L for completed fights
+  const isComplete = winnerName != null;
+  const won = isComplete && hasBet ? betOn === winnerName : null;
+  const payout = won !== null && hasBet
+    ? (won ? betAmount * (betOddsDecimal - 1) : -betAmount)
+    : null;
 
   return (
-    <div className={`border rounded-lg p-6 ${colors[severity]}`}>
-      <h3 className="text-sm text-gray-400 mb-3">Betting Analysis</h3>
+    <Card className={cn(hasBet && 'border-green-500/30')}>
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-medium text-muted-foreground">Value Bet</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {hasBet ? (
+          <div className="space-y-3">
+            <div>
+              <p className="text-lg font-bold text-green-400">{betOn}</p>
+              <p className="text-xs text-muted-foreground">
+                {fmtAmerican(betOddsAmerican)} ({betOddsDecimal.toFixed(2)}x)
+              </p>
+            </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <div className="text-xs text-gray-500">Upset Score</div>
-          <div className={`text-2xl font-bold ${
-            severity === 'high' ? 'text-red-400' :
-            severity === 'medium' ? 'text-yellow-400' : 'text-gray-400'
-          }`}>
-            {Math.round(score)}
-          </div>
-          <div className="text-xs text-gray-500 mt-0.5">
-            {severity === 'high' ? 'High upset potential' :
-             severity === 'medium' ? 'Moderate upset potential' :
-             'Low upset potential'}
-          </div>
-        </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <p className="text-[10px] text-muted-foreground">Edge</p>
+                <p className="text-lg font-bold tabular-nums text-green-400">
+                  +{(betEdge * 100).toFixed(1)}%
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground">Bet Size</p>
+                <p className="text-lg font-bold tabular-nums">
+                  ${Math.round(betAmount)}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] text-muted-foreground">
+                  {isComplete ? 'P&L' : 'Potential'}
+                </p>
+                {payout !== null ? (
+                  <p className={cn(
+                    'text-lg font-bold tabular-nums',
+                    payout >= 0 ? 'text-green-400' : 'text-red-400'
+                  )}>
+                    {payout >= 0 ? '+' : '-'}${Math.abs(payout).toFixed(0)}
+                  </p>
+                ) : (
+                  <p className="text-lg font-bold tabular-nums text-muted-foreground">
+                    +${Math.round(betAmount * (betOddsDecimal - 1))}
+                  </p>
+                )}
+              </div>
+            </div>
 
-        {confidence !== null && confidence !== undefined && (
+            <div className="flex items-center gap-4 text-[10px] text-muted-foreground/60">
+              <span>AI: {(aiProb * 100).toFixed(0)}%</span>
+              <span>Vegas: {(vegasImplied * 100).toFixed(0)}%</span>
+            </div>
+          </div>
+        ) : (
           <div>
-            <div className="text-xs text-gray-500">Betting Confidence</div>
-            <div className="text-2xl font-bold text-white">
-              {Math.round(confidence)}
-            </div>
-            <div className="text-xs text-gray-500 mt-0.5">
-              {confidence >= 70 ? 'Strong bet' :
-               confidence >= 40 ? 'Moderate edge' :
-               'Weak / avoid'}
-            </div>
+            <p className="text-sm text-muted-foreground">No value bet on this fight.</p>
+            <p className="mt-1 text-[10px] text-muted-foreground/60">
+              AI and Vegas odds are too close (edge &lt; 3%).
+            </p>
           </div>
         )}
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

@@ -1,7 +1,14 @@
-"""Scrapes betting odds from BestFightOdds.com for upcoming UFC events."""
+"""Scrapes betting odds from BestFightOdds.com for upcoming UFC events.
 
+Also creates Event, Fighter, and Fight records for upcoming bouts that
+don't yet exist in the database (since the UFCStats scraper only covers
+completed events).
+"""
+
+import hashlib
 import logging
 import re
+from datetime import date, datetime
 
 import httpx
 from bs4 import BeautifulSoup
@@ -187,8 +194,128 @@ def compute_average_odds(odds_list: list[tuple[str, int]]) -> int | None:
     return 100
 
 
+def _parse_event_date(date_str: str) -> date | None:
+    """Parse a BFO date string like 'March 14th' into a date object.
+
+    BFO uses formats like 'March 14th', 'April 2nd', 'May 1st'.
+    No year is given, so we assume the next occurrence of that date.
+    """
+    # Strip ordinal suffixes (st, nd, rd, th)
+    cleaned = re.sub(r"(\d+)(st|nd|rd|th)\b", r"\1", date_str.strip())
+
+    # Try with year first (in case BFO changes format)
+    for fmt in ("%b %d, %Y", "%B %d, %Y", "%m/%d/%Y"):
+        try:
+            return datetime.strptime(cleaned, fmt).date()
+        except ValueError:
+            continue
+
+    # Try without year — assume current or next year
+    for fmt in ("%B %d", "%b %d"):
+        try:
+            parsed = datetime.strptime(cleaned, fmt)
+            today = date.today()
+            result = parsed.replace(year=today.year).date()
+            # If the date has passed, assume next year
+            if result < today:
+                result = parsed.replace(year=today.year + 1).date()
+            return result
+        except ValueError:
+            continue
+
+    return None
+
+
+def _bfo_hash(value: str) -> str:
+    """Generate a synthetic ufcstats_hash for BFO-sourced records."""
+    return "bfo-" + hashlib.sha256(value.encode()).hexdigest()[:56]
+
+
+def _get_or_create_event(session: Session, event_info: dict) -> Event:
+    """Find an existing event by name, or create one from BFO data."""
+    name = event_info["name"]
+    # Try exact name match first
+    event = session.execute(
+        select(Event).where(Event.name == name)
+    ).scalar_one_or_none()
+    if event:
+        return event
+
+    # Try fuzzy match on name (BFO might format names slightly differently)
+    all_events = session.execute(
+        select(Event).where(Event.date >= date.today())
+    ).scalars().all()
+    for evt in all_events:
+        if fuzz.ratio(name.lower(), evt.name.lower()) >= 85:
+            return evt
+
+    # Create new event
+    event_date = _parse_event_date(event_info.get("date", ""))
+    if not event_date:
+        # Default to 7 days from now if we can't parse the date
+        event_date = date.today()
+
+    event = Event(
+        name=name,
+        date=event_date,
+        location=None,
+        ufcstats_hash=_bfo_hash(f"event-{name}"),
+    )
+    session.add(event)
+    session.flush()  # Get the ID
+    logger.info(f"Created event: {name} ({event_date})")
+    return event
+
+
+def _get_or_create_fighter(session: Session, name: str) -> int:
+    """Find an existing fighter by name (fuzzy), or create one from BFO data."""
+    # Try fuzzy match first
+    fighter_id = _fuzzy_match_fighter(session, name)
+    if fighter_id:
+        return fighter_id
+
+    # Create new fighter
+    fighter = Fighter(
+        name=name,
+        ufcstats_hash=_bfo_hash(f"fighter-{name}"),
+    )
+    session.add(fighter)
+    session.flush()
+    logger.info(f"Created fighter: {name}")
+    return fighter.id
+
+
+def _get_or_create_fight(
+    session: Session, event_id: int, f1_id: int, f2_id: int, bout_order: int
+) -> Fight:
+    """Find an existing fight or create one."""
+    fight = session.execute(
+        select(Fight).where(
+            ((Fight.fighter_1_id == f1_id) & (Fight.fighter_2_id == f2_id))
+            | ((Fight.fighter_1_id == f2_id) & (Fight.fighter_2_id == f1_id))
+        ).where(Fight.event_id == event_id)
+    ).scalar_one_or_none()
+    if fight:
+        return fight
+
+    fight = Fight(
+        event_id=event_id,
+        fighter_1_id=f1_id,
+        fighter_2_id=f2_id,
+        result=None,  # Upcoming fight — no result yet
+        bout_order=bout_order,
+    )
+    session.add(fight)
+    session.flush()
+    logger.info(f"Created fight: fighter {f1_id} vs fighter {f2_id}")
+    return fight
+
+
 def fetch_and_store_odds(session: Session) -> int:
     """Scrape BestFightOdds for all upcoming UFC events and store odds.
+
+    Creates Event, Fighter, and Fight records as needed for upcoming bouts
+    that aren't yet in the database.
 
     Returns the number of fights with odds stored.
     """
@@ -197,8 +324,13 @@ def fetch_and_store_odds(session: Session) -> int:
 
     for event_info in events:
         matchups = scrape_event_odds(event_info["url"])
+        if not matchups:
+            continue
 
-        for matchup in matchups:
+        # Get or create the event
+        event = _get_or_create_event(session, event_info)
+
+        for bout_idx, matchup in enumerate(matchups):
             f1_name = matchup["fighter_1"]
             f2_name = matchup["fighter_2"]
 
@@ -218,25 +350,13 @@ def fetch_and_store_odds(session: Session) -> int:
             f1_decimal = american_to_decimal(f1_american)
             f2_decimal = american_to_decimal(f2_american)
 
-            # Match fighters to our database
-            f1_id = _fuzzy_match_fighter(session, f1_name)
-            f2_id = _fuzzy_match_fighter(session, f2_name)
+            # Get or create fighters
+            f1_id = _get_or_create_fighter(session, f1_name)
+            f2_id = _get_or_create_fighter(session, f2_name)
 
-            if not f1_id or not f2_id:
-                logger.warning(f"Could not match fighters: {f1_name} vs {f2_name}")
-                continue
-
-            # Find the fight in our DB (check both orderings)
-            fight = session.execute(
-                select(Fight).where(
-                    ((Fight.fighter_1_id == f1_id) & (Fight.fighter_2_id == f2_id))
-                    | ((Fight.fighter_1_id == f2_id) & (Fight.fighter_2_id == f1_id))
-                )
-            ).scalar_one_or_none()
-
-            if not fight:
-                logger.debug(f"No fight found in DB for {f1_name} vs {f2_name}")
-                continue
+            # Get or create the fight (main event = highest bout_order)
+            bout_order = len(matchups) - bout_idx
+            fight = _get_or_create_fight(session, event.id, f1_id, f2_id, bout_order)
 
             # Align odds to fight's fighter_1/fighter_2 ordering
             if fight.fighter_1_id == f2_id:
@@ -265,9 +385,9 @@ def fetch_and_store_odds(session: Session) -> int:
 
 def _fuzzy_match_fighter(session: Session, name: str) -> int | None:
     """Match a BFO fighter name to our database using fuzzy matching."""
-    # Exact match first
+    # Exact match first (take most recently created if duplicates)
     fighter = session.execute(
-        select(Fighter).where(Fighter.name == name)
+        select(Fighter).where(Fighter.name == name).order_by(Fighter.id.desc()).limit(1)
     ).scalar_one_or_none()
     if fighter:
         return fighter.id

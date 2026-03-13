@@ -1,4 +1,5 @@
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell } from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import type { Prediction } from '../../types';
 
 interface MethodBreakdownProps {
@@ -7,67 +8,72 @@ interface MethodBreakdownProps {
   fighter2Name?: string;
 }
 
-const METHOD_COLORS: Record<string, string> = {
-  ko_tko: '#ef4444',
-  submission: '#3b82f6',
-  decision: '#a855f7',
-};
-
 const METHOD_LABELS: Record<string, string> = {
   ko_tko: 'KO/TKO',
   submission: 'Submission',
   decision: 'Decision',
 };
 
+const METHOD_COLORS: Record<string, string> = {
+  ko_tko: 'bg-red-500',
+  submission: 'bg-blue-500',
+  decision: 'bg-purple-500',
+};
+
 export default function MethodBreakdown({ prediction, fighter1Name, fighter2Name }: MethodBreakdownProps) {
-  const data = [
-    { method: 'KO/TKO', prob: (prediction.ko_tko_prob ?? 0) * 100, fill: METHOD_COLORS.ko_tko },
-    { method: 'Submission', prob: (prediction.submission_prob ?? 0) * 100, fill: METHOD_COLORS.submission },
-    { method: 'Decision', prob: (prediction.decision_prob ?? 0) * 100, fill: METHOD_COLORS.decision },
+  const methods = [
+    { key: 'ko_tko', prob: prediction.ko_tko_prob ?? 0 },
+    { key: 'submission', prob: prediction.submission_prob ?? 0 },
+    { key: 'decision', prob: prediction.decision_prob ?? 0 },
   ];
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-      <h3 className="text-sm text-gray-400 mb-4">Method of Victory</h3>
-      <ResponsiveContainer width="100%" height={120}>
-        <BarChart data={data} layout="vertical" margin={{ left: 70, right: 30 }}>
-          <XAxis type="number" domain={[0, 100]} tick={{ fill: '#6b7280', fontSize: 12 }} />
-          <YAxis
-            type="category"
-            dataKey="method"
-            tick={{ fill: '#d1d5db', fontSize: 13 }}
-            width={70}
-          />
-          <Bar dataKey="prob" radius={[0, 4, 4, 0]}>
-            {data.map((entry, i) => (
-              <Cell key={i} fill={entry.fill} />
-            ))}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium text-muted-foreground">Method of Victory</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {methods.map(({ key, prob }) => (
+          <div key={key} className="space-y-1">
+            <div className="flex justify-between text-sm">
+              <span className="font-medium">{METHOD_LABELS[key]}</span>
+              <span className="tabular-nums text-muted-foreground">{Math.round(prob * 100)}%</span>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
+              <div
+                className={`h-full rounded-full ${METHOD_COLORS[key]} transition-all`}
+                style={{ width: `${prob * 100}%` }}
+              />
+            </div>
+          </div>
+        ))}
 
-      {/* Per-fighter breakdown */}
-      {prediction.method_by_fighter && (
-        <div className="grid grid-cols-2 gap-4 mt-4 text-xs">
-          {['fighter_1', 'fighter_2'].map((fKey) => {
-            const methods = prediction.method_by_fighter![fKey];
-            if (!methods) return null;
-            return (
-              <div key={fKey}>
-                <div className="text-gray-500 mb-1">
-                  {fKey === 'fighter_1' ? (fighter1Name || 'Fighter 1') : (fighter2Name || 'Fighter 2')}
-                </div>
-                {Object.entries(methods).map(([m, p]) => (
-                  <div key={m} className="flex justify-between text-gray-400">
-                    <span>{METHOD_LABELS[m] || m}</span>
-                    <span>{Math.round(p * 100)}%</span>
+        {prediction.method_by_fighter && (
+          <>
+            <Separator className="my-3" />
+            <div className="grid grid-cols-2 gap-4">
+              {['fighter_1', 'fighter_2'].map((fKey) => {
+                const fighterMethods = prediction.method_by_fighter![fKey];
+                if (!fighterMethods) return null;
+                const name = fKey === 'fighter_1' ? (fighter1Name || 'Fighter 1') : (fighter2Name || 'Fighter 2');
+                const color = fKey === 'fighter_1' ? 'text-blue-400' : 'text-red-400';
+
+                return (
+                  <div key={fKey}>
+                    <div className={`mb-1.5 text-xs font-medium ${color}`}>{name}</div>
+                    {Object.entries(fighterMethods).map(([m, p]) => (
+                      <div key={m} className="flex justify-between text-xs text-muted-foreground">
+                        <span>{METHOD_LABELS[m] || m}</span>
+                        <span className="tabular-nums">{Math.round(p * 100)}%</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
   );
 }

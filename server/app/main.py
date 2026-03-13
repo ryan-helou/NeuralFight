@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import SyncSessionLocal
-from app.routers import events, fighters, fights, odds, predictions
+from app.routers import events, fighters, fights, odds, performance, predictions
 from app.services.bestfightodds_scraper import fetch_and_store_odds
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,7 @@ app.include_router(fighters.router)
 app.include_router(fights.router)
 app.include_router(odds.router)
 app.include_router(predictions.router)
+app.include_router(performance.router)
 
 
 @app.get("/api/health")

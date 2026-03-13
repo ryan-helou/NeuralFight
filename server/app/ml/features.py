@@ -32,12 +32,19 @@ class FeatureBuilder:
         # Cache for opponent win rates to avoid repeated queries
         self._win_rate_cache = {}
 
-    def build_training_set(self) -> tuple[pd.DataFrame, pd.DataFrame]:
+    def build_training_set(self, seed: int = 42) -> tuple[pd.DataFrame, pd.DataFrame]:
         """Build the full training dataset from all historical fights.
+
+        Randomly swaps fighter_1/fighter_2 ordering for ~50% of fights during
+        feature building to prevent the model from learning positional bias
+        (the scraper always stores the winner as fighter_1).
 
         Returns:
             (features_df, targets_df) where each row is one fight.
         """
+        import random
+        rng = random.Random(seed)
+
         fights = self.session.execute(
             select(Fight, Event.date)
             .join(Event, Fight.event_id == Event.id)
@@ -49,13 +56,17 @@ class FeatureBuilder:
         targets = []
 
         for fight, event_date in fights:
-            features = self._build_fight_features(fight, event_date)
+            swap = rng.random() < 0.5
+            features = self._build_fight_features(fight, event_date, swap=swap)
             if features is None:
                 continue
 
             rows.append(features)
 
-            winner_is_f2 = 1 if fight.winner_id == fight.fighter_2_id else 0
+            if swap:
+                winner_is_f2 = 1 if fight.winner_id == fight.fighter_1_id else 0
+            else:
+                winner_is_f2 = 1 if fight.winner_id == fight.fighter_2_id else 0
 
             targets.append({
                 "fight_id": fight.id,
@@ -81,10 +92,19 @@ class FeatureBuilder:
         fight, event_date = result
         return self._build_fight_features(fight, event_date)
 
-    def _build_fight_features(self, fight: Fight, event_date: date) -> dict | None:
-        """Compute all features for a fight, using only data before event_date."""
-        f1 = self.session.get(Fighter, fight.fighter_1_id)
-        f2 = self.session.get(Fighter, fight.fighter_2_id)
+    def _build_fight_features(self, fight: Fight, event_date: date, swap: bool = False) -> dict | None:
+        """Compute all features for a fight, using only data before event_date.
+
+        Args:
+            swap: If True, swap fighter_1 and fighter_2 ordering. Used during
+                training to prevent positional bias.
+        """
+        if swap:
+            f1 = self.session.get(Fighter, fight.fighter_2_id)
+            f2 = self.session.get(Fighter, fight.fighter_1_id)
+        else:
+            f1 = self.session.get(Fighter, fight.fighter_1_id)
+            f2 = self.session.get(Fighter, fight.fighter_2_id)
         if not f1 or not f2:
             return None
 

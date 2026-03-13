@@ -43,6 +43,8 @@ def train_all(features_df: pd.DataFrame, targets_df: pd.DataFrame, n_trials: int
     X = features_df.drop(columns=["fight_id"], errors="ignore")
     feature_names = list(X.columns)
 
+    logger.info(f"Winner distribution: {targets_df['winner'].value_counts().to_dict()}")
+
     # Time-series split: we rely on the data being ordered chronologically
     n = len(X)
     train_end = int(n * 0.7)

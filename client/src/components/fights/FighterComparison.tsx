@@ -1,5 +1,6 @@
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import type { FightDetail } from '../../types';
-import StatBar from '../common/StatBar';
 
 interface FighterComparisonProps {
   fight: FightDetail;
@@ -21,53 +22,86 @@ export default function FighterComparison({ fight }: FighterComparisonProps) {
     { label: 'Stance', left: f1.stance || '--', right: f2.stance || '--' },
   ];
 
-  // Aggregate round stats
   const f1Total = aggregateRounds(fight.fighter_1_rounds);
   const f2Total = aggregateRounds(fight.fighter_2_rounds);
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-      {/* Fighter names header */}
-      <div className="flex justify-between items-center mb-6">
-        <div className="text-center flex-1">
-          <h3 className="text-lg font-bold text-blue-400">{f1.name}</h3>
-          {f1.nickname && <p className="text-xs text-gray-500">"{f1.nickname}"</p>}
-        </div>
-        <div className="text-gray-600 text-sm px-4">vs</div>
-        <div className="text-center flex-1">
-          <h3 className="text-lg font-bold text-red-400">{f2.name}</h3>
-          {f2.nickname && <p className="text-xs text-gray-500">"{f2.nickname}"</p>}
-        </div>
-      </div>
-
-      {/* Physical stats */}
-      <div className="space-y-2 mb-6">
-        {stats.map((s) => (
-          <div key={s.label} className="flex justify-between text-sm">
-            <span className="text-gray-300">{s.left}</span>
-            <span className="text-gray-500">{s.label}</span>
-            <span className="text-gray-300">{s.right}</span>
+    <Card>
+      <CardHeader className="pb-4">
+        <div className="flex items-center justify-between">
+          <div className="text-center flex-1">
+            <CardTitle className="text-blue-400">{f1.name}</CardTitle>
+            {f1.nickname && <p className="mt-0.5 text-xs text-muted-foreground">"{f1.nickname}"</p>}
           </div>
-        ))}
-      </div>
-
-      {/* Fight stats bars */}
-      {f1Total && f2Total && (
-        <div className="space-y-3">
-          <h4 className="text-sm text-gray-400 font-medium">Fight Stats</h4>
-          <StatBar label="Sig. Strikes" leftValue={f1Total.sig_strikes_landed} rightValue={f2Total.sig_strikes_landed} />
-          <StatBar label="Total Strikes" leftValue={f1Total.total_strikes_landed} rightValue={f2Total.total_strikes_landed} />
-          <StatBar label="Takedowns" leftValue={f1Total.takedowns_landed} rightValue={f2Total.takedowns_landed} />
-          <StatBar label="Knockdowns" leftValue={f1Total.knockdowns} rightValue={f2Total.knockdowns} />
-          <StatBar
-            label="Control Time"
-            leftValue={f1Total.control_time_seconds}
-            rightValue={f2Total.control_time_seconds}
-            format={(v) => `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`}
-          />
-          <StatBar label="Sub. Attempts" leftValue={f1Total.submissions_attempted} rightValue={f2Total.submissions_attempted} />
+          <span className="text-xs font-medium text-muted-foreground px-3">vs</span>
+          <div className="text-center flex-1">
+            <CardTitle className="text-red-400">{f2.name}</CardTitle>
+            {f2.nickname && <p className="mt-0.5 text-xs text-muted-foreground">"{f2.nickname}"</p>}
+          </div>
         </div>
-      )}
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Physical stats */}
+        <div className="space-y-2">
+          {stats.map((s) => (
+            <div key={s.label} className="flex justify-between text-sm">
+              <span className="font-medium">{s.left}</span>
+              <span className="text-muted-foreground text-xs">{s.label}</span>
+              <span className="font-medium">{s.right}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Fight stats */}
+        {f1Total && f2Total && (
+          <>
+            <Separator />
+            <div className="space-y-3">
+              <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Fight Stats</h4>
+              <StatRow label="Sig. Strikes" left={f1Total.sig_strikes_landed} right={f2Total.sig_strikes_landed} />
+              <StatRow label="Total Strikes" left={f1Total.total_strikes_landed} right={f2Total.total_strikes_landed} />
+              <StatRow label="Takedowns" left={f1Total.takedowns_landed} right={f2Total.takedowns_landed} />
+              <StatRow label="Knockdowns" left={f1Total.knockdowns} right={f2Total.knockdowns} />
+              <StatRow
+                label="Control Time"
+                left={f1Total.control_time_seconds}
+                right={f2Total.control_time_seconds}
+                format={(v) => `${Math.floor(v / 60)}:${String(v % 60).padStart(2, '0')}`}
+              />
+              <StatRow label="Sub. Attempts" left={f1Total.submissions_attempted} right={f2Total.submissions_attempted} />
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function StatRow({
+  label,
+  left,
+  right,
+  format = (v: number) => String(v),
+}: {
+  label: string;
+  left: number;
+  right: number;
+  format?: (v: number) => string;
+}) {
+  const total = left + right || 1;
+  const leftPct = (left / total) * 100;
+
+  return (
+    <div className="space-y-1">
+      <div className="flex justify-between text-xs">
+        <span className="font-medium">{format(left)}</span>
+        <span className="text-muted-foreground">{label}</span>
+        <span className="font-medium">{format(right)}</span>
+      </div>
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="bg-blue-500 transition-all" style={{ width: `${leftPct}%` }} />
+        <div className="bg-red-500 transition-all" style={{ width: `${100 - leftPct}%` }} />
+      </div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage'
 import EventPage from './pages/EventPage'
 import FightPage from './pages/FightPage'
 import UpsetsPage from './pages/UpsetsPage'
+import PerformancePage from './pages/PerformancePage'
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Route path="/events/:id" element={<EventPage />} />
         <Route path="/fights/:id" element={<FightPage />} />
         <Route path="/upsets" element={<UpsetsPage />} />
+        <Route path="/performance" element={<PerformancePage />} />
       </Route>
     </Routes>
   )
