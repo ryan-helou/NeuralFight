@@ -1,4 +1,4 @@
-import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import type { Prediction } from '../../types';
 
 interface RoundProbabilitiesProps {
@@ -11,7 +11,7 @@ export default function RoundProbabilities({ prediction }: RoundProbabilitiesPro
   const data = Object.entries(prediction.round_probabilities)
     .map(([round, prob]) => ({
       round: round === 'decision' ? 'DEC' : `R${round}`,
-      prob: Math.round(prob * 100),
+      prob,
     }))
     .sort((a, b) => {
       if (a.round === 'DEC') return 1;
@@ -19,21 +19,34 @@ export default function RoundProbabilities({ prediction }: RoundProbabilitiesPro
       return a.round.localeCompare(b.round);
     });
 
+  const maxProb = Math.max(...data.map((d) => d.prob));
+
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-      <h3 className="text-sm text-gray-400 mb-4">Round of Finish</h3>
-      <ResponsiveContainer width="100%" height={160}>
-        <BarChart data={data} margin={{ bottom: 0 }}>
-          <XAxis dataKey="round" tick={{ fill: '#d1d5db', fontSize: 12 }} />
-          <YAxis tick={{ fill: '#6b7280', fontSize: 12 }} domain={[0, 'auto']} />
-          <Tooltip
-            contentStyle={{ background: '#1f2937', border: '1px solid #374151', borderRadius: 8 }}
-            labelStyle={{ color: '#d1d5db' }}
-            formatter={(value: number) => [`${value}%`, 'Probability']}
-          />
-          <Bar dataKey="prob" fill="#ef4444" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
-    </div>
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm font-medium text-muted-foreground">Round of Finish</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-end gap-1.5" style={{ height: 120 }}>
+          {data.map(({ round, prob }) => {
+            const height = maxProb > 0 ? (prob / maxProb) * 100 : 0;
+            const pct = Math.round(prob * 100);
+
+            return (
+              <div key={round} className="flex flex-1 flex-col items-center gap-1">
+                <span className="text-[10px] tabular-nums text-muted-foreground">{pct}%</span>
+                <div className="w-full flex-1 flex items-end">
+                  <div
+                    className="w-full rounded-t-sm bg-red-500/80 transition-all"
+                    style={{ height: `${height}%`, minHeight: pct > 0 ? 4 : 0 }}
+                  />
+                </div>
+                <span className="text-[10px] font-medium text-muted-foreground">{round}</span>
+              </div>
+            );
+          })}
+        </div>
+      </CardContent>
+    </Card>
   );
 }

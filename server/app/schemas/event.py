@@ -34,5 +34,13 @@ class FightSummaryOut(BaseModel):
     winner_name: str | None
     fighter_1_win_prob: float | None = None
     fighter_2_win_prob: float | None = None
+    vegas_fighter_1_implied: float | None = None
+    vegas_fighter_2_implied: float | None = None
+    fighter_1_american: int | None = None
+    fighter_2_american: int | None = None
+    upset_score: float | None = None
+    bet_amount: float | None = None
+    bet_on: str | None = None
+    bet_decimal_odds: float | None = None
 
     model_config = {"from_attributes": True}

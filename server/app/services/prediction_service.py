@@ -43,7 +43,7 @@ class PredictionService:
             select(Prediction).where(
                 Prediction.fight_id == fight_id,
                 Prediction.model_version == MODEL_VERSION,
-            )
+            ).order_by(Prediction.created_at.desc()).limit(1)
         ).scalar_one_or_none()
 
         if existing:
@@ -52,7 +52,17 @@ class PredictionService:
         return self.generate_prediction(fight_id)
 
     def generate_prediction(self, fight_id: int) -> Prediction | None:
-        """Generate a fresh prediction for a fight."""
+        """Generate a fresh prediction for a fight. Skips if one already exists."""
+        # Prevent duplicates — check if prediction already exists
+        existing = self.session.execute(
+            select(Prediction).where(
+                Prediction.fight_id == fight_id,
+                Prediction.model_version == MODEL_VERSION,
+            ).limit(1)
+        ).scalar_one_or_none()
+        if existing:
+            return existing
+
         self._ensure_models_loaded()
 
         # Build features
@@ -70,8 +80,11 @@ class PredictionService:
         f1 = self.session.get(Fighter, fight.fighter_1_id)
         f2 = self.session.get(Fighter, fight.fighter_2_id)
 
+        # Determine total rounds (default 3; title bouts and main events are 5)
+        total_rounds = fight.total_rounds or (5 if fight.is_title_bout else 3)
+
         # Run prediction
-        prediction = self._predictor.predict(features)
+        prediction = self._predictor.predict(features, total_rounds=total_rounds)
 
         # Generate explanation
         rationale, feature_importances = self._explainer.explain(
@@ -85,6 +98,7 @@ class PredictionService:
             select(BettingOdds)
             .where(BettingOdds.fight_id == fight_id)
             .order_by(BettingOdds.retrieved_at.desc())
+            .limit(1)
         ).scalar_one_or_none()
 
         if odds:

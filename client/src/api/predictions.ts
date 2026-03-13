@@ -1,5 +1,5 @@
 import api from './client';
-import type { FightDetail, Odds, Prediction, Upset } from '../types';
+import type { FightDetail, Odds, Prediction, Upset, ValueBet } from '../types';
 
 export async function getPrediction(fightId: number) {
   const { data } = await api.get<Prediction>(`/predictions/fight/${fightId}`);
@@ -8,6 +8,16 @@ export async function getPrediction(fightId: number) {
 
 export async function generatePrediction(fightId: number) {
   const { data } = await api.post<Prediction>(`/predictions/fight/${fightId}`);
+  return data;
+}
+
+export async function generateEventPredictions(eventId: number) {
+  const { data } = await api.post<{ generated: number; total: number }>(`/predictions/event/${eventId}`);
+  return data;
+}
+
+export async function generateUpcomingPredictions() {
+  const { data } = await api.post<{ generated: number; total: number; already_done?: boolean }>('/predictions/generate-upcoming');
   return data;
 }
 
@@ -30,5 +40,10 @@ export async function getFight(id: number) {
 
 export async function getOdds(fightId: number) {
   const { data } = await api.get<Odds | null>(`/odds/fight/${fightId}`);
+  return data;
+}
+
+export async function getValueBets() {
+  const { data } = await api.get<ValueBet[]>('/predictions/value-bets');
   return data;
 }

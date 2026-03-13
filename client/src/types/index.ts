@@ -27,6 +27,14 @@ export interface FightSummary {
   winner_name: string | null;
   fighter_1_win_prob: number | null;
   fighter_2_win_prob: number | null;
+  vegas_fighter_1_implied: number | null;
+  vegas_fighter_2_implied: number | null;
+  fighter_1_american: number | null;
+  fighter_2_american: number | null;
+  upset_score: number | null;
+  bet_amount: number | null;
+  bet_on: string | null;
+  bet_decimal_odds: number | null;
 }
 
 export interface EventDetail {
@@ -122,4 +130,21 @@ export interface Upset {
   fighter_2_win_prob: number;
   upset_score: number;
   betting_confidence: number | null;
+}
+
+export interface ValueBet {
+  fight_id: number;
+  fighter_1_name: string;
+  fighter_2_name: string;
+  event_name: string;
+  event_date: string;
+  fighter_1_win_prob: number;
+  fighter_2_win_prob: number;
+  bet_on: string;
+  edge: number;
+  bet_amount: number;
+  american_odds: number;
+  decimal_odds: number;
+  vegas_implied: number;
+  ai_prob: number;
 }

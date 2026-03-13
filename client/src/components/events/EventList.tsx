@@ -8,14 +8,14 @@ interface EventListProps {
 export default function EventList({ events }: EventListProps) {
   if (events.length === 0) {
     return (
-      <div className="text-center text-gray-500 py-12">
+      <div className="py-12 text-center text-muted-foreground">
         No events found.
       </div>
     );
   }
 
   return (
-    <div className="grid gap-3">
+    <div className="space-y-2">
       {events.map((event) => (
         <EventCard key={event.id} event={event} />
       ))}

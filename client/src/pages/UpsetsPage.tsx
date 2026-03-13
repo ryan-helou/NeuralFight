@@ -1,67 +1,152 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
-import { getUpsets } from '../api/predictions';
+import { getValueBets } from '../api/predictions';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import { cn } from '@/lib/utils';
+
+function fmtAmerican(odds: number) {
+  return odds > 0 ? `+${odds}` : `${odds}`;
+}
 
 export default function UpsetsPage() {
-  const { data: upsets, isLoading } = useQuery({
-    queryKey: ['upsets', 0],
-    queryFn: () => getUpsets(0),
+  const { data: bets, isLoading } = useQuery({
+    queryKey: ['value-bets'],
+    queryFn: getValueBets,
   });
+
+  const totalWagered = bets?.reduce((s, b) => s + b.bet_amount, 0) ?? 0;
+  const totalPotential = bets?.reduce((s, b) => s + b.bet_amount * (b.decimal_odds - 1), 0) ?? 0;
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-white mb-6">Upset Alerts</h1>
-      <p className="text-gray-400 text-sm mb-8">
-        Fights where the AI model disagrees with betting odds. Higher upset score = more upset potential.
-      </p>
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Value Bets</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Fights where the AI sees edge over Vegas. Bet size scales with edge — bigger disagreement = bigger bet.
+        </p>
+      </div>
+
+      {/* Summary cards */}
+      {bets && bets.length > 0 && (
+        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs font-medium text-muted-foreground">Value Bets</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums">{bets.length}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs font-medium text-muted-foreground">Total Wagered</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums">${Math.round(totalWagered).toLocaleString()}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs font-medium text-muted-foreground">Avg Edge</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-green-400">
+                +{(bets.reduce((s, b) => s + b.edge, 0) / bets.length * 100).toFixed(1)}%
+              </p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs font-medium text-muted-foreground">Max Potential</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums text-green-400">
+                +${Math.round(totalPotential).toLocaleString()}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {isLoading ? (
-        <div className="text-gray-500 text-center py-12">Loading...</div>
-      ) : !upsets || upsets.length === 0 ? (
-        <div className="text-gray-500 text-center py-12">No upset alerts found.</div>
-      ) : (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-gray-800">
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Fight</th>
-                <th className="text-left text-xs text-gray-500 font-medium px-4 py-3">Event</th>
-                <th className="text-right text-xs text-gray-500 font-medium px-4 py-3">AI Probs</th>
-                <th className="text-right text-xs text-gray-500 font-medium px-4 py-3">Upset Score</th>
-                <th className="text-right text-xs text-gray-500 font-medium px-4 py-3">Bet Confidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {upsets.map((upset) => {
-                const severity = upset.upset_score >= 60 ? 'text-red-400' :
-                  upset.upset_score >= 30 ? 'text-yellow-400' : 'text-gray-400';
-
-                return (
-                  <tr key={upset.fight_id} className="border-b border-gray-800/50 hover:bg-gray-800/30">
-                    <td className="px-4 py-3">
-                      <Link
-                        to={`/fights/${upset.fight_id}`}
-                        className="text-sm text-white hover:text-red-400 transition-colors"
-                      >
-                        {upset.fighter_1_name} vs {upset.fighter_2_name}
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-500">{upset.event_name}</td>
-                    <td className="px-4 py-3 text-right text-sm text-gray-400">
-                      {Math.round(upset.fighter_1_win_prob * 100)}% / {Math.round(upset.fighter_2_win_prob * 100)}%
-                    </td>
-                    <td className={`px-4 py-3 text-right text-sm font-medium ${severity}`}>
-                      {Math.round(upset.upset_score)}
-                    </td>
-                    <td className="px-4 py-3 text-right text-sm text-gray-400">
-                      {upset.betting_confidence !== null ? Math.round(upset.betting_confidence) : '--'}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+        <div className="space-y-2">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
         </div>
+      ) : !bets || bets.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            No value bets found. AI and Vegas agree on everything right now.
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Fight</TableHead>
+                  <TableHead>Event</TableHead>
+                  <TableHead className="text-right">Bet On</TableHead>
+                  <TableHead className="text-right">Odds</TableHead>
+                  <TableHead className="text-right">Edge</TableHead>
+                  <TableHead className="text-right">Bet</TableHead>
+                  <TableHead className="text-right">Potential</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {bets.map((bet) => {
+                  const potential = bet.bet_amount * (bet.decimal_odds - 1);
+                  return (
+                    <TableRow key={bet.fight_id}>
+                      <TableCell>
+                        <Link
+                          to={`/fights/${bet.fight_id}`}
+                          className="font-medium transition-colors hover:text-blue-400"
+                        >
+                          {bet.fighter_1_name} vs {bet.fighter_2_name}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground text-xs">
+                        {bet.event_name}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <span className="font-medium text-green-400">{bet.bet_on}</span>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-muted-foreground">
+                        {fmtAmerican(bet.american_odds)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'tabular-nums',
+                            bet.edge >= 0.15
+                              ? 'border-green-500/50 text-green-400'
+                              : bet.edge >= 0.08
+                                ? 'border-green-500/30 text-green-400/70'
+                                : 'text-muted-foreground'
+                          )}
+                        >
+                          +{(bet.edge * 100).toFixed(1)}%
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums font-medium">
+                        ${Math.round(bet.bet_amount)}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums text-green-400/70">
+                        +${Math.round(potential)}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       )}
     </div>
   );

@@ -1,4 +1,6 @@
 import { Link } from 'react-router-dom';
+import { Card, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
 import type { EventSummary } from '../../types';
 
 interface EventCardProps {
@@ -10,34 +12,35 @@ export default function EventCard({ event }: EventCardProps) {
   const isUpcoming = eventDate >= new Date();
 
   return (
-    <Link
-      to={`/events/${event.id}`}
-      className="block bg-gray-900 border border-gray-800 rounded-lg p-5 hover:border-gray-600 transition-colors"
-    >
-      <div className="flex items-start justify-between">
-        <div>
-          <h3 className="font-semibold text-white">{event.name}</h3>
-          <p className="text-sm text-gray-400 mt-1">
-            {eventDate.toLocaleDateString('en-US', {
-              weekday: 'short',
-              month: 'short',
-              day: 'numeric',
-              year: 'numeric',
-            })}
-          </p>
-          {event.location && (
-            <p className="text-xs text-gray-500 mt-0.5">{event.location}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          {isUpcoming && (
-            <span className="text-xs bg-red-500/20 text-red-400 px-2 py-0.5 rounded">
-              Upcoming
-            </span>
-          )}
-          <span className="text-xs text-gray-500">{event.fight_count} fights</span>
-        </div>
-      </div>
+    <Link to={`/events/${event.id}`}>
+      <Card className="transition-colors hover:bg-accent/50">
+        <CardContent className="flex items-center justify-between p-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2">
+              <h3 className="truncate font-semibold">{event.name}</h3>
+              {isUpcoming && (
+                <Badge variant="destructive" className="shrink-0 text-[10px] px-1.5 py-0">
+                  UPCOMING
+                </Badge>
+              )}
+            </div>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              {eventDate.toLocaleDateString('en-US', {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                year: 'numeric',
+              })}
+              {event.location && (
+                <span className="text-muted-foreground/60"> &middot; {event.location}</span>
+              )}
+            </p>
+          </div>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {event.fight_count} fights
+          </span>
+        </CardContent>
+      </Card>
     </Link>
   );
 }

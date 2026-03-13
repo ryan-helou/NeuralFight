@@ -53,11 +53,13 @@ class Predictor:
 
         logger.info("All models loaded successfully")
 
-    def predict(self, features: dict) -> FightPrediction:
+    def predict(self, features: dict, total_rounds: int = 3) -> FightPrediction:
         """Generate a full prediction from a feature dictionary.
 
         Args:
             features: Dict of feature values (from FeatureBuilder).
+            total_rounds: Number of scheduled rounds (3 or 5). Used to zero out
+                impossible round predictions and redistribute probability.
 
         Returns:
             FightPrediction with all probability breakdowns.
@@ -100,6 +102,20 @@ class Predictor:
         for label, prob in zip(round_labels, round_probs_raw):
             key = "decision" if label == 0 else str(label)
             round_probs[key] = float(prob)
+
+        # Zero out impossible rounds for 3-round fights and redistribute
+        if total_rounds <= 3:
+            excess = 0.0
+            for r in ["4", "5"]:
+                if r in round_probs:
+                    excess += round_probs[r]
+                    round_probs[r] = 0.0
+            if excess > 0:
+                valid_keys = [k for k in round_probs if k not in ("4", "5") and round_probs[k] > 0]
+                if valid_keys:
+                    total_valid = sum(round_probs[k] for k in valid_keys)
+                    for k in valid_keys:
+                        round_probs[k] += excess * (round_probs[k] / total_valid)
 
         # Round by fighter
         round_by_fighter = {
