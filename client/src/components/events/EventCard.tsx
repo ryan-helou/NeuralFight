@@ -13,18 +13,18 @@ export default function EventCard({ event }: EventCardProps) {
 
   return (
     <Link to={`/events/${event.id}`}>
-      <Card className="transition-colors hover:bg-accent/50">
-        <CardContent className="flex items-center justify-between p-4">
+      <Card className="group transition-all hover:bg-accent/40 hover:border-border/80">
+        <CardContent className="flex items-center justify-between px-4 py-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="truncate font-semibold">{event.name}</h3>
+              <h3 className="truncate text-sm font-semibold">{event.name}</h3>
               {isUpcoming && (
-                <Badge variant="destructive" className="shrink-0 text-[10px] px-1.5 py-0">
+                <Badge variant="outline" className="shrink-0 text-[10px] px-1.5 py-0 border-green-500/40 text-green-400">
                   UPCOMING
                 </Badge>
               )}
             </div>
-            <p className="mt-0.5 text-sm text-muted-foreground">
+            <p className="mt-0.5 text-xs text-muted-foreground/70">
               {eventDate.toLocaleDateString('en-US', {
                 weekday: 'short',
                 month: 'short',
@@ -32,13 +32,13 @@ export default function EventCard({ event }: EventCardProps) {
                 year: 'numeric',
               })}
               {event.location && (
-                <span className="text-muted-foreground/60"> &middot; {event.location}</span>
+                <span className="text-muted-foreground/40"> &middot; {event.location}</span>
               )}
             </p>
           </div>
-          <span className="shrink-0 text-xs text-muted-foreground">
-            {event.fight_count} fights
-          </span>
+          <Badge variant="secondary" className="shrink-0 text-[11px] tabular-nums">
+            {event.fight_count}
+          </Badge>
         </CardContent>
       </Card>
     </Link>
