@@ -4,7 +4,6 @@ import { Link, useParams } from 'react-router-dom';
 import { getEvent } from '../api/events';
 import { generateEventPredictions } from '../api/predictions';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import FightCard from '../components/fights/FightCard';
@@ -25,7 +24,6 @@ export default function EventPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['event', eventId] }),
   });
 
-  // Auto-generate predictions for any event with missing predictions
   const hasMissing = event ? event.fights.some((f) => f.fighter_1_win_prob === null) : false;
 
   useEffect(() => {
@@ -39,11 +37,6 @@ export default function EventPage() {
       <div className="space-y-3">
         <Skeleton className="h-8 w-48" />
         <Skeleton className="h-4 w-64" />
-        <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-[72px] rounded-xl" />
-          ))}
-        </div>
         <div className="mt-6 space-y-2">
           {Array.from({ length: 6 }).map((_, i) => (
             <Skeleton key={i} className="h-20 w-full rounded-xl" />
@@ -63,7 +56,7 @@ export default function EventPage() {
   const titleBouts = event.fights.filter((f) => f.is_title_bout).length;
   const predictedFights = event.fights.filter((f) => f.fighter_1_win_prob !== null).length;
 
-  // Compute AI vs Vegas accuracy for past events
+  // AI vs Vegas accuracy
   const completedWithPredictions = event.fights.filter(
     (f) => f.winner_name && f.fighter_1_win_prob !== null
   );
@@ -78,18 +71,16 @@ export default function EventPage() {
 
   const vegasCorrect = completedWithOdds.filter((f) => {
     const vegasPick = f.vegas_fighter_1_implied! >= f.vegas_fighter_2_implied!
-      ? f.fighter_1_name
-      : f.fighter_2_name;
+      ? f.fighter_1_name : f.fighter_2_name;
     return vegasPick === f.winner_name;
   }).length;
 
   const showAccuracy = !isUpcoming && completedWithPredictions.length > 0;
 
-  // All fights with value bets (past and upcoming)
+  // Betting
   const allBets = event.fights.filter(
     (f) => f.bet_on && f.bet_amount && f.bet_decimal_odds
   );
-  // Past bets with results
   const settledBets = allBets.filter((f) => f.winner_name);
 
   let moneySpent = 0;
@@ -97,7 +88,6 @@ export default function EventPage() {
   let eventWins = 0;
 
   if (!isUpcoming && settledBets.length > 0) {
-    // Past event: actual P&L
     for (const f of settledBets) {
       moneySpent += f.bet_amount!;
       if (f.bet_on === f.winner_name) {
@@ -106,171 +96,131 @@ export default function EventPage() {
       }
     }
   } else {
-    // Upcoming event: projected
     for (const f of allBets) {
       moneySpent += f.bet_amount!;
       moneyMade += f.bet_amount! * (f.bet_decimal_odds! - 1);
     }
   }
 
-  const showBetting = allBets.length > 0;
-
   return (
     <div>
       <Link
         to="/"
-        className="mb-6 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        className="mb-4 inline-flex items-center gap-1 text-xs text-muted-foreground/60 transition-colors hover:text-foreground"
       >
-        <span>&larr;</span> All Events
+        &larr; All Events
       </Link>
 
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold">{event.name}</h1>
-        <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
-          <span>
-            {eventDate.toLocaleDateString('en-US', {
-              weekday: 'long',
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric',
-            })}
-          </span>
-          {event.location && (
-            <>
-              <span className="text-muted-foreground/40">&middot;</span>
-              <span>{event.location}</span>
-            </>
-          )}
+      {/* Header */}
+      <div className="mb-5">
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-bold">{event.name}</h1>
           {isUpcoming && (
-            <Badge variant="outline" className="ml-1 border-green-500/50 text-green-400 text-[10px]">
+            <Badge variant="outline" className="border-green-500/40 text-green-400 text-[10px]">
               UPCOMING
             </Badge>
           )}
         </div>
+        <p className="mt-0.5 text-sm text-muted-foreground/70">
+          {eventDate.toLocaleDateString('en-US', {
+            weekday: 'long',
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric',
+          })}
+          {event.location && <> &middot; {event.location}</>}
+        </p>
       </div>
 
       {/* Generating banner */}
       {batchGenerate.isPending && (
-        <div className="mb-4 flex items-center gap-2 rounded-lg border border-border bg-accent/30 px-4 py-3 text-sm text-muted-foreground">
-          <div className="h-4 w-4 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground" />
-          Generating predictions for all fights...
+        <div className="mb-4 flex items-center gap-2 rounded-lg border border-border bg-accent/30 px-4 py-2.5 text-sm text-muted-foreground">
+          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-muted-foreground border-t-foreground" />
+          Generating predictions...
         </div>
       )}
 
-      {/* KPI Cards */}
-      <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Fights</p>
-            <p className="mt-1 text-2xl font-bold tabular-nums">{event.fights.length}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Title Bouts</p>
-            <p className={`mt-1 text-2xl font-bold tabular-nums ${titleBouts > 0 ? 'text-yellow-400' : ''}`}>
-              {titleBouts}
-            </p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Predictions</p>
-            <p className="mt-1 text-2xl font-bold tabular-nums">{predictedFights}</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4">
-            <p className="text-xs font-medium text-muted-foreground">Coverage</p>
-            <p className={`mt-1 text-2xl font-bold tabular-nums ${predictedFights === event.fights.length ? 'text-green-400' : ''}`}>
-              {event.fights.length > 0 ? Math.round((predictedFights / event.fights.length) * 100) : 0}%
-            </p>
-          </CardContent>
-        </Card>
+      {/* Compact stats bar */}
+      <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-border bg-card px-4 py-3 text-xs">
+        <Stat label="Fights" value={event.fights.length} />
+        {titleBouts > 0 && <Stat label="Title" value={titleBouts} color="text-yellow-400" />}
+        <Stat label="Predicted" value={`${predictedFights}/${event.fights.length}`} />
+
         {showAccuracy && (
           <>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs font-medium text-muted-foreground">AI Accuracy</p>
-                <p className="mt-1 text-2xl font-bold tabular-nums text-blue-400">
-                  {aiCorrect}/{completedWithPredictions.length}
-                </p>
-                <p className="text-[10px] text-muted-foreground/60">
-                  {Math.round((aiCorrect / completedWithPredictions.length) * 100)}%
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs font-medium text-muted-foreground">Vegas Accuracy</p>
-                {completedWithOdds.length > 0 ? (
-                  <>
-                    <p className="mt-1 text-2xl font-bold tabular-nums text-muted-foreground">
-                      {vegasCorrect}/{completedWithOdds.length}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground/60">
-                      {Math.round((vegasCorrect / completedWithOdds.length) * 100)}%
-                    </p>
-                  </>
-                ) : (
-                  <p className="mt-1 text-sm text-muted-foreground">No odds</p>
-                )}
-              </CardContent>
-            </Card>
+            <div className="h-4 w-px bg-border" />
+            <Stat
+              label="AI"
+              value={`${aiCorrect}/${completedWithPredictions.length}`}
+              sub={`${Math.round((aiCorrect / completedWithPredictions.length) * 100)}%`}
+              color="text-blue-400"
+            />
+            {completedWithOdds.length > 0 && (
+              <Stat
+                label="Vegas"
+                value={`${vegasCorrect}/${completedWithOdds.length}`}
+                sub={`${Math.round((vegasCorrect / completedWithOdds.length) * 100)}%`}
+              />
+            )}
           </>
         )}
-        {showBetting && (
+
+        {allBets.length > 0 && (
           <>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {isUpcoming ? 'Projected Spend' : 'Money Spent'}
-                </p>
-                <p className="mt-1 text-2xl font-bold tabular-nums">
-                  ${Math.round(moneySpent)}
-                </p>
-                <p className="text-[10px] text-muted-foreground/60">
-                  {allBets.length} value bet{allBets.length !== 1 ? 's' : ''}
-                  {!isUpcoming && settledBets.length > 0 && (
-                    <> &middot; {eventWins}-{settledBets.length - eventWins} record</>
-                  )}
-                </p>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="p-4">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {isUpcoming ? 'Potential Return' : 'Money Made'}
-                </p>
-                <p className={cn(
-                  'mt-1 text-2xl font-bold tabular-nums',
-                  isUpcoming
-                    ? 'text-green-400'
-                    : moneyMade - moneySpent >= 0 ? 'text-green-400' : 'text-red-400'
-                )}>
-                  {isUpcoming ? (
-                    <>+${Math.round(moneyMade)}</>
-                  ) : (
-                    <>{moneyMade - moneySpent >= 0 ? '+' : '-'}${Math.abs(Math.round(moneyMade - moneySpent))}</>
-                  )}
-                </p>
-                <p className="text-[10px] text-muted-foreground/60">
-                  {isUpcoming
-                    ? `(${moneySpent > 0 ? `+${Math.round((moneyMade / moneySpent) * 100)}%` : '0%'} if all win)`
-                    : `(${moneySpent > 0 ? `${moneyMade - moneySpent >= 0 ? '+' : ''}${Math.round(((moneyMade - moneySpent) / moneySpent) * 100)}%` : '0%'} ROI)`
-                  }
-                </p>
-              </CardContent>
-            </Card>
+            <div className="h-4 w-px bg-border" />
+            <Stat
+              label={isUpcoming ? 'Spend' : 'Spent'}
+              value={`$${Math.round(moneySpent)}`}
+              sub={`${allBets.length} bet${allBets.length !== 1 ? 's' : ''}${!isUpcoming && settledBets.length > 0 ? ` (${eventWins}-${settledBets.length - eventWins})` : ''}`}
+            />
+            <Stat
+              label={isUpcoming ? 'Potential' : 'P&L'}
+              value={
+                isUpcoming
+                  ? `+$${Math.round(moneyMade)}`
+                  : `${moneyMade - moneySpent >= 0 ? '+' : '-'}$${Math.abs(Math.round(moneyMade - moneySpent))}`
+              }
+              sub={
+                isUpcoming
+                  ? `${moneySpent > 0 ? `+${Math.round((moneyMade / moneySpent) * 100)}%` : '0%'} if all win`
+                  : `${moneySpent > 0 ? `${moneyMade - moneySpent >= 0 ? '+' : ''}${Math.round(((moneyMade - moneySpent) / moneySpent) * 100)}%` : '0%'} ROI`
+              }
+              color={
+                isUpcoming
+                  ? 'text-green-400'
+                  : moneyMade - moneySpent >= 0 ? 'text-green-400' : 'text-red-400'
+              }
+            />
           </>
         )}
       </div>
 
-      <div className="space-y-2">
+      {/* Fight list */}
+      <div className="space-y-1.5">
         {event.fights.map((fight) => (
           <FightCard key={fight.id} fight={fight} />
         ))}
       </div>
+    </div>
+  );
+}
+
+function Stat({
+  label,
+  value,
+  sub,
+  color,
+}: {
+  label: string;
+  value: string | number;
+  sub?: string;
+  color?: string;
+}) {
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <span className="text-muted-foreground/60">{label}</span>
+      <span className={cn('font-semibold tabular-nums', color)}>{value}</span>
+      {sub && <span className="text-[10px] text-muted-foreground/50">{sub}</span>}
     </div>
   );
 }
