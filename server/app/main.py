@@ -1,44 +1,78 @@
 import asyncio
 import logging
+from datetime import date
 
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import select
 
+from app.config import settings
 from app.database import SyncSessionLocal
+from app.models import Event, Fight, Prediction
 from app.routers import events, fighters, fights, odds, performance, predictions
 from app.services.bestfightodds_scraper import fetch_and_store_odds
+from app.services.prediction_service import PredictionService
 
 logger = logging.getLogger(__name__)
 
-ODDS_REFRESH_INTERVAL = 3600  # 1 hour
+REFRESH_INTERVAL = 4 * 3600  # 4 hours
 
 
-async def _odds_refresh_loop():
-    """Background task that refreshes odds from BestFightOdds every hour."""
+async def _refresh_loop():
+    """Background task: refresh odds + generate/update predictions every 4 hours."""
     while True:
         try:
             session = SyncSessionLocal()
             try:
+                # 1. Refresh odds from BestFightOdds
                 count = fetch_and_store_odds(session)
-                logger.info(f"Scheduled odds refresh: updated {count} fights")
+                logger.info(f"Odds refresh: updated {count} fights")
+
+                # 2. Generate predictions for upcoming fights without one
+                upcoming_fights = session.execute(
+                    select(Fight)
+                    .join(Event, Fight.event_id == Event.id)
+                    .where(Event.date >= date.today())
+                ).scalars().all()
+
+                service = PredictionService(session)
+                generated = 0
+                for fight in upcoming_fights:
+                    existing = session.execute(
+                        select(Prediction)
+                        .where(Prediction.fight_id == fight.id)
+                        .limit(1)
+                    ).scalar_one_or_none()
+                    if not existing:
+                        try:
+                            pred = service.generate_prediction(fight.id)
+                            if pred:
+                                generated += 1
+                        except Exception:
+                            continue
+
+                logger.info(
+                    f"Prediction refresh: {generated} new predictions for "
+                    f"{len(upcoming_fights)} upcoming fights"
+                )
             except Exception:
-                logger.exception("Scheduled odds refresh failed")
+                logger.exception("Scheduled refresh failed")
                 session.rollback()
             finally:
                 session.close()
         except Exception:
-            logger.exception("Unexpected error in odds refresh loop")
+            logger.exception("Unexpected error in refresh loop")
 
-        await asyncio.sleep(ODDS_REFRESH_INTERVAL)
+        await asyncio.sleep(REFRESH_INTERVAL)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: launch background odds refresh
-    task = asyncio.create_task(_odds_refresh_loop())
-    logger.info("Started hourly odds refresh background task")
+    # Startup: launch background refresh
+    task = asyncio.create_task(_refresh_loop())
+    logger.info("Started 4-hour odds + predictions refresh background task")
     yield
     # Shutdown: cancel background task
     task.cancel()
@@ -57,7 +91,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[o.strip() for o in settings.allowed_origins.split(",")],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

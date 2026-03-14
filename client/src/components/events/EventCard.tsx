@@ -8,8 +8,8 @@ interface EventCardProps {
 }
 
 export default function EventCard({ event }: EventCardProps) {
-  const eventDate = new Date(event.date);
-  const isUpcoming = eventDate >= new Date();
+  const eventDate = new Date(event.date + 'T12:00:00');
+  const isUpcoming = eventDate >= new Date(new Date().toDateString());
 
   return (
     <Link to={`/events/${event.id}`}>
