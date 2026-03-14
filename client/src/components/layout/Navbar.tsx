@@ -4,6 +4,7 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { path: '/', label: 'Events' },
   { path: '/upsets', label: 'Value Bets' },
+  { path: '/parlays', label: 'Parlays' },
   { path: '/performance', label: 'Performance' },
 ];
 
