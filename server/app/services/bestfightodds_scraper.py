@@ -298,10 +298,25 @@ def _get_or_create_fight(
     if fight:
         return fight
 
+    # Infer weight class from fighter's most recent fight
+    weight_class = None
+    for fid in (f1_id, f2_id):
+        wc_row = session.execute(
+            select(Fight.weight_class).where(
+                ((Fight.fighter_1_id == fid) | (Fight.fighter_2_id == fid))
+                & (Fight.weight_class.isnot(None))
+                & (Fight.weight_class != "")
+            ).order_by(Fight.id.desc()).limit(1)
+        ).scalar_one_or_none()
+        if wc_row:
+            weight_class = wc_row
+            break
+
     fight = Fight(
         event_id=event_id,
         fighter_1_id=f1_id,
         fighter_2_id=f2_id,
+        weight_class=weight_class,
         result=None,  # Upcoming fight — no result yet
         bout_order=bout_order,
     )
