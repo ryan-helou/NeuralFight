@@ -40,7 +40,7 @@ export default function HomePage() {
   }, []);
 
   const upcomingCount = allEvents?.filter(
-    (e) => new Date(e.date) >= new Date()
+    (e) => new Date(e.date + 'T23:59:59') >= new Date()
   ).length ?? 0;
   const totalFights = allEvents?.reduce((s, e) => s + e.fight_count, 0) ?? 0;
 

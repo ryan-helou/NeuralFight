@@ -8,71 +8,61 @@ import shap
 
 logger = logging.getLogger(__name__)
 
-# Human-readable category groupings
+# Human-readable category groupings (lean feature set)
 CATEGORY_MAP = {
     "striking": [
-        "sig_strikes_per_min", "sig_strike_accuracy", "sig_strikes_absorbed_per_min",
-        "sig_strike_defense", "knockdown_rate", "r1_output", "r3_plus_output",
+        "sig_per_min", "sig_accuracy", "sig_absorbed_per_min", "sig_defense",
     ],
     "grappling": [
-        "takedowns_per_15min", "takedown_accuracy", "takedown_defense",
-        "sub_attempts_per_15min", "control_time_per_15min",
+        "td_per_15min", "td_accuracy", "td_defense", "control_per_15min",
     ],
     "finishing": [
-        "finish_rate_ko", "finish_rate_sub", "finish_speed", "been_finished_rate",
+        "finish_rate",
     ],
     "experience": [
-        "experience", "win_rate", "win_streak", "avg_fight_time_min",
+        "experience", "win_rate", "win_streak", "career_trajectory", "elo",
     ],
-    "opponent_quality": [
-        "avg_opp_win_rate", "avg_beaten_opp_win_rate", "avg_lost_to_opp_win_rate",
-        "best_win_opp_rate", "worst_loss_opp_rate", "avg_opp_win_rate_recent",
-    ],
-    "dominance": [
-        "avg_win_dominance", "avg_loss_dominance", "avg_win_dominance_recent",
-        "avg_loss_dominance_recent",
+    "matchup": [
+        "striker_vs", "grappler_vs", "wrestler_vs", "h2h", "common_opp",
+        "has_fought_before", "output_resilience",
     ],
     "physical": [
         "height", "reach", "age",
     ],
-    "conditioning": [
-        "layoff", "strike_dropoff", "late_round_win_rate",
+    "context": [
+        "is_title_bout", "small_cage",
     ],
 }
 
 # Feature descriptions for detailed explanations
 FEATURE_DESC = {
-    "sig_strikes_per_min_diff": ("significant strikes per minute", "{:.1f}"),
-    "sig_strike_accuracy_diff": ("striking accuracy", "{:.0%}"),
-    "sig_strikes_absorbed_per_min_diff": ("strikes absorbed per minute", "{:.1f}"),
-    "sig_strike_defense_diff": ("strike defense", "{:.0%}"),
-    "takedowns_per_15min_diff": ("takedowns per 15 min", "{:.1f}"),
-    "takedown_accuracy_diff": ("takedown accuracy", "{:.0%}"),
-    "takedown_defense_diff": ("takedown defense", "{:.0%}"),
-    "sub_attempts_per_15min_diff": ("submission attempts per 15 min", "{:.1f}"),
-    "control_time_per_15min_diff": ("control time per 15 min", "{:.0f}s"),
-    "knockdown_rate_diff": ("knockdown rate", "{:.1%}"),
-    "finish_rate_ko_diff": ("KO/TKO finish rate", "{:.0%}"),
-    "finish_rate_sub_diff": ("submission finish rate", "{:.0%}"),
-    "avg_fight_time_min_diff": ("avg fight duration", "{:.1f} min"),
+    "elo_diff": ("Elo rating difference", "{:.0f}"),
+    "sig_per_min_diff": ("significant strikes per minute", "{:.1f}"),
+    "sig_accuracy_diff": ("striking accuracy", "{:.0%}"),
+    "sig_absorbed_per_min_diff": ("strikes absorbed per minute", "{:.1f}"),
+    "sig_defense_diff": ("strike defense", "{:.0%}"),
+    "td_per_15min_diff": ("takedowns per 15 min", "{:.1f}"),
+    "td_accuracy_diff": ("takedown accuracy", "{:.0%}"),
+    "td_defense_diff": ("takedown defense", "{:.0%}"),
     "win_rate_diff": ("win rate", "{:.0%}"),
+    "finish_rate_diff": ("finish rate", "{:.0%}"),
+    "control_per_15min_diff": ("control time per 15 min", "{:.0f}s"),
+    "win_streak_diff": ("win streak", "{:.0f}"),
+    "experience_diff": ("UFC fights", "{:.0f}"),
+    "age_diff": ("age", "{:.0f} yrs"),
     "height_diff": ("height", "{:.0f}\""),
     "reach_diff": ("reach", "{:.0f}\""),
-    "age_diff": ("age", "{:.0f} yrs"),
-    "experience_diff": ("UFC fights", "{:.0f}"),
-    "win_streak_diff": ("win streak", "{:.0f}"),
-    "avg_opp_win_rate_diff": ("strength of schedule", "{:.0%}"),
-    "avg_beaten_opp_win_rate_diff": ("quality of wins", "{:.0%}"),
-    "avg_lost_to_opp_win_rate_diff": ("quality of losses", "{:.0%}"),
-    "avg_win_dominance_diff": ("win dominance", "{:.2f}"),
-    "avg_loss_dominance_diff": ("loss competitiveness", "{:.2f}"),
-    "finish_speed_diff": ("finish speed", "{:.1f} min"),
-    "been_finished_rate_diff": ("finish vulnerability", "{:.0%}"),
-    "layoff_diff": ("days since last fight", "{:.0f}"),
-    "strike_dropoff_diff": ("late-round cardio", "{:.2f}"),
-    "late_round_win_rate_diff": ("late-fight win rate", "{:.0%}"),
-    "r1_output_diff": ("R1 striking output", "{:.1f}"),
-    "r3_plus_output_diff": ("R3+ striking output", "{:.1f}"),
+    "career_trajectory_diff": ("momentum (recent vs career)", "{:.0%}"),
+    "striker_vs_grappler": ("striker vs grappler matchup", "{:.2f}"),
+    "grappler_vs_striker": ("grappler vs striker matchup", "{:.2f}"),
+    "wrestler_vs_striker": ("wrestler vs striker matchup", "{:.2f}"),
+    "striker_vs_wrestler": ("striker vs wrestler matchup", "{:.2f}"),
+    "has_fought_before": ("rematch indicator", "{:.0f}"),
+    "h2h_win_diff": ("head-to-head record", "{:.0f}"),
+    "common_opp_win_rate_diff": ("common opponent performance", "{:.0%}"),
+    "output_resilience_diff": ("output resilience under pressure", "{:.2f}"),
+    "small_cage": ("small octagon (APEX)", "{:.0f}"),
+    "is_title_bout": ("title fight", "{:.0f}"),
 }
 
 
@@ -280,56 +270,55 @@ def _feature_to_reason(
     """Turn a feature into a short, specific reason."""
     other = f2 if benefits == f1 else f1
 
-    if "knockdown_rate" in name:
-        return f"{benefits} has serious knockout power"
-    if "sig_strikes_per_min" in name:
+    if "elo_diff" in name:
+        return f"{benefits} has the higher Elo rating from tougher competition"
+    if "sig_per_min" in name and "absorbed" not in name:
         return f"{benefits} is the more active striker"
-    if "sig_strike_accuracy" in name:
+    if "sig_accuracy" in name:
         return f"{benefits} is the more accurate striker"
-    if "sig_strike_defense" in name:
+    if "sig_absorbed" in name:
+        return f"{other} absorbs more damage"
+    if "sig_defense" in name:
         return f"{benefits} is much harder to hit cleanly"
-    if "takedowns_per_15min" in name:
+    if "td_per_15min" in name:
         return f"{benefits} can control where the fight takes place"
-    if "takedown_defense" in name:
+    if "td_accuracy" in name:
+        return f"{benefits} converts takedowns at a higher rate"
+    if "td_defense" in name:
         return f"{benefits} is very difficult to take down"
-    if "control_time_per_15min" in name:
+    if "control_per_15min" in name:
         return f"{benefits} dominates on the ground"
-    if "sub_attempts_per_15min" in name:
-        return f"{benefits} is a constant submission threat"
-    if "finish_rate_ko" in name:
-        return f"{benefits} finishes fights by KO at a high rate"
-    if "finish_rate_sub" in name:
-        return f"{benefits} has a dangerous submission game"
-    if "been_finished_rate" in name:
-        return f"{other} has been stopped before and is hittable"
+    if "finish_rate" in name:
+        return f"{benefits} finishes fights at a higher rate"
     if "win_rate" in name:
-        f_wr, o_wr = _get_stat(features, "win_rate")
-        if f_wr is not None and o_wr is not None:
-            bwr = f_wr if benefits == f1 else o_wr
-            return f"{benefits} has a {bwr:.0%} career win rate"
         return f"{benefits} has the better overall record"
     if "win_streak" in name:
-        ws = features.get(f"f1_win_streak") if benefits == f1 else features.get(f"f2_win_streak")
-        if ws and ws >= 2:
-            return f"{benefits} is riding a {int(ws)}-fight win streak with momentum"
-        return None
+        return f"{benefits} has momentum from recent wins"
     if "experience" in name:
         return f"{benefits} has significantly more UFC experience"
-    if "avg_opp_win_rate" in name:
-        return f"{benefits} has been tested against better competition"
-    if "avg_win_dominance" in name:
-        return f"{benefits} doesn't just win — they dominate"
+    if "career_trajectory" in name:
+        return f"{benefits} is on an upward trajectory"
+    if "striker_vs" in name or "grappler_vs" in name or "wrestler_vs" in name:
+        return f"{benefits} has a favorable style matchup"
+    if "h2h_win_diff" in name:
+        return f"{benefits} has won their previous meeting(s)"
+    if "has_fought_before" in name:
+        return "these fighters have met before"
+    if "common_opp" in name:
+        return f"{benefits} performed better against shared opponents"
+    if "output_resilience" in name:
+        return f"{benefits} maintains output even under pressure"
     if "reach_diff" in name:
         rd = abs(val)
-        return f"{benefits} has a {rd:.0f}-inch reach advantage to control distance" if rd >= 2 else None
+        return f"{benefits} has a {rd:.0f}-inch reach advantage" if rd >= 2 else None
     if "height_diff" in name:
-        return None  # Height alone isn't a compelling reason
+        return None
     if "age_diff" in name:
         return f"{benefits} has youth on their side"
-    if "layoff" in name:
-        return f"{other} may be dealing with ring rust from time off"
-    if "strike_dropoff" in name or "late_round_win_rate" in name:
-        return f"{benefits} has better cardio and finishes fights strong"
+    if "small_cage" in name:
+        return "the smaller APEX cage changes fight dynamics"
+    if "is_title_bout" in name:
+        return "championship rounds and stakes may favor the more experienced fighter"
 
     return None
 

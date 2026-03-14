@@ -80,11 +80,8 @@ class PredictionService:
         f1 = self.session.get(Fighter, fight.fighter_1_id)
         f2 = self.session.get(Fighter, fight.fighter_2_id)
 
-        # Determine total rounds (default 3; title bouts and main events are 5)
-        total_rounds = fight.total_rounds or (5 if fight.is_title_bout else 3)
-
         # Run prediction
-        prediction = self._predictor.predict(features, total_rounds=total_rounds)
+        prediction = self._predictor.predict(features)
 
         # Generate explanation
         rationale, feature_importances = self._explainer.explain(
@@ -127,8 +124,8 @@ class PredictionService:
             ko_tko_prob=prediction.method_probs.get("ko_tko"),
             submission_prob=prediction.method_probs.get("submission"),
             decision_prob=prediction.method_probs.get("decision"),
-            predicted_round=_get_predicted_round(prediction.round_probs),
-            round_probabilities=prediction.round_probs,
+            predicted_round=None,
+            round_probabilities=None,
             method_by_fighter=prediction.method_by_fighter,
             upset_score=upset_score,
             betting_confidence=betting_confidence,
@@ -142,16 +139,3 @@ class PredictionService:
         self.session.commit()
 
         return db_prediction
-
-
-def _get_predicted_round(round_probs: dict) -> int | None:
-    """Get the most likely round of finish (None if decision is most likely)."""
-    if not round_probs:
-        return None
-    best = max(round_probs.items(), key=lambda x: x[1])
-    if best[0] == "decision":
-        return None
-    try:
-        return int(best[0])
-    except ValueError:
-        return None

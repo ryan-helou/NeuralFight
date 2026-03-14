@@ -11,7 +11,7 @@ import MethodBreakdown from '../components/predictions/MethodBreakdown';
 import PredictionBadge from '../components/predictions/PredictionBadge';
 import OddsComparison from '../components/predictions/OddsComparison';
 import RationalePanel from '../components/predictions/RationalePanel';
-import RoundProbabilities from '../components/predictions/RoundProbabilities';
+
 import ValueBet from '../components/predictions/UpsetAlert';
 
 export default function FightPage() {
@@ -111,7 +111,7 @@ export default function FightPage() {
 
       {/* KPI Row */}
       {prediction ? (
-        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Card>
             <CardContent className="p-4 text-center">
               <p className="text-xs font-medium text-muted-foreground">Favored</p>
@@ -139,14 +139,6 @@ export default function FightPage() {
                 {prediction.ko_tko_prob !== null && prediction.submission_prob !== null && prediction.decision_prob !== null
                   ? `${Math.round(Math.max(prediction.ko_tko_prob, prediction.submission_prob, prediction.decision_prob) * 100)}%`
                   : ''}
-              </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 text-center">
-              <p className="text-xs font-medium text-muted-foreground">Predicted Round</p>
-              <p className="mt-1 text-2xl font-bold tabular-nums">
-                {prediction.predicted_round ? `R${prediction.predicted_round}` : 'DEC'}
               </p>
             </CardContent>
           </Card>
@@ -231,7 +223,6 @@ export default function FightPage() {
                 fighter1Name={fight.fighter_1.name}
                 fighter2Name={fight.fighter_2.name}
               />
-              <RoundProbabilities prediction={prediction} />
             </>
           )}
         </div>

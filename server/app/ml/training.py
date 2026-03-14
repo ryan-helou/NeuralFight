@@ -1,11 +1,11 @@
 """Model training pipeline for NeuralFight.
 
-Trains three LightGBM models:
+Trains two LightGBM models:
 1. Winner prediction (binary)
 2. Method of victory (multiclass: ko_tko, submission, decision)
-3. Round of finish (multiclass: 1-5, decision)
 
-Uses time-series split and Optuna hyperparameter tuning.
+Uses time-series split, Optuna hyperparameter tuning, and calibration.
+Optimizes for log loss (calibration) rather than raw accuracy.
 """
 
 import logging
@@ -19,33 +19,32 @@ import pandas as pd
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import accuracy_score, brier_score_loss, log_loss
 from sklearn.model_selection import PredefinedSplit
-from sklearn.preprocessing import LabelEncoder
 
 logger = logging.getLogger(__name__)
 
 MODEL_DIR = Path(__file__).parent / "models"
 MODEL_DIR.mkdir(exist_ok=True)
 
-# Method and round label mappings
+# Method label mappings
 METHOD_LABELS = ["ko_tko", "submission", "decision"]
-ROUND_LABELS = [0, 1, 2, 3, 4, 5]  # 0 = goes to decision
 
 
 def train_all(features_df: pd.DataFrame, targets_df: pd.DataFrame, n_trials: int = 50):
-    """Train all three models and save them.
+    """Train winner and method models and save them.
 
     Args:
         features_df: Feature matrix (one row per fight).
-        targets_df: Target variables with columns: fight_id, winner, method_category, finish_round, is_decision.
+        targets_df: Target variables with columns: fight_id, winner, method_category.
         n_trials: Number of Optuna trials for hyperparameter search.
     """
     # Drop fight_id from features
     X = features_df.drop(columns=["fight_id"], errors="ignore")
     feature_names = list(X.columns)
 
+    logger.info(f"Training with {len(feature_names)} features: {feature_names}")
     logger.info(f"Winner distribution: {targets_df['winner'].value_counts().to_dict()}")
 
-    # Time-series split: we rely on the data being ordered chronologically
+    # Time-series split: data is ordered chronologically
     n = len(X)
     train_end = int(n * 0.7)
     val_end = int(n * 0.85)
@@ -67,6 +66,7 @@ def train_all(features_df: pd.DataFrame, targets_df: pd.DataFrame, n_trials: int
 
     # 2. Method model
     logger.info("Training method model...")
+    from sklearn.preprocessing import LabelEncoder
     method_encoder = LabelEncoder()
     method_encoder.fit(METHOD_LABELS)
     y_method = method_encoder.transform(
@@ -82,25 +82,6 @@ def train_all(features_df: pd.DataFrame, targets_df: pd.DataFrame, n_trials: int
     joblib.dump(
         {"model": method_model, "encoder": method_encoder, "features": feature_names},
         MODEL_DIR / "method_v1.joblib",
-    )
-
-    # 3. Round model
-    logger.info("Training round model...")
-    round_encoder = LabelEncoder()
-    round_encoder.fit(ROUND_LABELS)
-    y_round = round_encoder.transform(
-        targets_df["finish_round"].apply(lambda x: x if x in ROUND_LABELS else 0)
-    )
-    round_model = _train_multiclass_model(
-        X_train, y_round[:train_end],
-        X_val, y_round[train_end:val_end],
-        num_class=len(ROUND_LABELS),
-        n_trials=n_trials,
-    )
-    _evaluate_multiclass(round_model, X_test, y_round[val_end:], "Round", [str(r) for r in ROUND_LABELS])
-    joblib.dump(
-        {"model": round_model, "encoder": round_encoder, "features": feature_names},
-        MODEL_DIR / "round_v1.joblib",
     )
 
     logger.info(f"All models saved to {MODEL_DIR}")
@@ -141,7 +122,6 @@ def _train_binary_model(
     # Calibrate using PredefinedSplit so only the val fold is used for calibration
     X_combined = pd.concat([X_train, X_val], ignore_index=True)
     y_combined = pd.concat([y_train, y_val], ignore_index=True)
-    # -1 = training fold (not used for calibration), 0 = validation fold
     test_fold = np.array([-1] * len(X_train) + [0] * len(X_val))
     ps = PredefinedSplit(test_fold)
 
@@ -154,10 +134,7 @@ def _train_binary_model(
 
 
 def _pad_proba(probs: np.ndarray, model_classes: np.ndarray, num_class: int) -> np.ndarray:
-    """Pad predict_proba output to have columns for all expected classes.
-
-    LightGBM may return fewer columns if some classes weren't seen in training.
-    """
+    """Pad predict_proba output to have columns for all expected classes."""
     if probs.shape[1] == num_class:
         return probs
     padded = np.zeros((probs.shape[0], num_class))
@@ -202,7 +179,6 @@ def _train_multiclass_model(
     best_params["verbose"] = -1
     logger.info(f"Best multiclass params: {best_params}")
 
-    # Calibrate using PredefinedSplit so only the val fold is used for calibration
     X_combined = pd.concat(
         [pd.DataFrame(X_train), pd.DataFrame(X_val)], ignore_index=True
     )
@@ -222,7 +198,6 @@ def _get_binary_probs(model, X: pd.DataFrame) -> np.ndarray:
     """Get probability of class 1 from a model, handling single-column edge case."""
     proba = model.predict_proba(X)
     if proba.shape[1] == 1:
-        # Model only outputs one column — check which class it represents
         if hasattr(model, "classes_") and model.classes_[0] == 1:
             return proba[:, 0]
         return 1 - proba[:, 0]

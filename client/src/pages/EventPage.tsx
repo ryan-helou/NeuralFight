@@ -57,8 +57,9 @@ export default function EventPage() {
     return <div className="py-12 text-center text-muted-foreground">Event not found.</div>;
   }
 
-  const eventDate = new Date(event.date);
-  const isUpcoming = eventDate >= new Date();
+  const eventDate = new Date(event.date + 'T23:59:59');
+  const hasNoResults = event.fights.every((f) => !f.winner_name);
+  const isUpcoming = eventDate >= new Date() || hasNoResults;
   const titleBouts = event.fights.filter((f) => f.is_title_bout).length;
   const predictedFights = event.fights.filter((f) => f.fighter_1_win_prob !== null).length;
 
@@ -84,21 +85,35 @@ export default function EventPage() {
 
   const showAccuracy = !isUpcoming && completedWithPredictions.length > 0;
 
-  // Compute event P&L from value bets
-  const betsOnEvent = event.fights.filter(
-    (f) => f.bet_on && f.bet_amount && f.bet_decimal_odds && f.winner_name
+  // All fights with value bets (past and upcoming)
+  const allBets = event.fights.filter(
+    (f) => f.bet_on && f.bet_amount && f.bet_decimal_odds
   );
-  let eventPnL = 0;
-  let eventWagered = 0;
+  // Past bets with results
+  const settledBets = allBets.filter((f) => f.winner_name);
+
+  let moneySpent = 0;
+  let moneyMade = 0;
   let eventWins = 0;
-  for (const f of betsOnEvent) {
-    const won = f.bet_on === f.winner_name;
-    const payout = won ? f.bet_amount! * (f.bet_decimal_odds! - 1) : -f.bet_amount!;
-    eventPnL += payout;
-    eventWagered += f.bet_amount!;
-    if (won) eventWins++;
+
+  if (!isUpcoming && settledBets.length > 0) {
+    // Past event: actual P&L
+    for (const f of settledBets) {
+      moneySpent += f.bet_amount!;
+      if (f.bet_on === f.winner_name) {
+        moneyMade += f.bet_amount! * (f.bet_decimal_odds! - 1);
+        eventWins++;
+      }
+    }
+  } else {
+    // Upcoming event: projected
+    for (const f of allBets) {
+      moneySpent += f.bet_amount!;
+      moneyMade += f.bet_amount! * (f.bet_decimal_odds! - 1);
+    }
   }
-  const showPnL = !isUpcoming && betsOnEvent.length > 0;
+
+  const showBetting = allBets.length > 0;
 
   return (
     <div>
@@ -204,33 +219,46 @@ export default function EventPage() {
             </Card>
           </>
         )}
-        {showPnL && (
+        {showBetting && (
           <>
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs font-medium text-muted-foreground">Bet Record</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {isUpcoming ? 'Projected Spend' : 'Money Spent'}
+                </p>
                 <p className="mt-1 text-2xl font-bold tabular-nums">
-                  <span className="text-green-400">{eventWins}</span>
-                  <span className="text-muted-foreground">-</span>
-                  <span className="text-red-400">{betsOnEvent.length - eventWins}</span>
+                  ${Math.round(moneySpent)}
                 </p>
                 <p className="text-[10px] text-muted-foreground/60">
-                  {betsOnEvent.length} value bets
+                  {allBets.length} value bet{allBets.length !== 1 ? 's' : ''}
+                  {!isUpcoming && settledBets.length > 0 && (
+                    <> &middot; {eventWins}-{settledBets.length - eventWins} record</>
+                  )}
                 </p>
               </CardContent>
             </Card>
             <Card>
               <CardContent className="p-4">
-                <p className="text-xs font-medium text-muted-foreground">Event P&L</p>
+                <p className="text-xs font-medium text-muted-foreground">
+                  {isUpcoming ? 'Potential Return' : 'Money Made'}
+                </p>
                 <p className={cn(
                   'mt-1 text-2xl font-bold tabular-nums',
-                  eventPnL >= 0 ? 'text-green-400' : 'text-red-400'
+                  isUpcoming
+                    ? 'text-green-400'
+                    : moneyMade - moneySpent >= 0 ? 'text-green-400' : 'text-red-400'
                 )}>
-                  {eventPnL >= 0 ? '+' : '-'}${Math.abs(eventPnL).toFixed(0)}
+                  {isUpcoming ? (
+                    <>+${Math.round(moneyMade)}</>
+                  ) : (
+                    <>{moneyMade - moneySpent >= 0 ? '+' : '-'}${Math.abs(Math.round(moneyMade - moneySpent))}</>
+                  )}
                 </p>
                 <p className="text-[10px] text-muted-foreground/60">
-                  ${eventWagered.toFixed(0)} wagered
-                  {eventWagered > 0 && ` (${eventPnL >= 0 ? '+' : ''}${((eventPnL / eventWagered) * 100).toFixed(0)}% ROI)`}
+                  {isUpcoming
+                    ? `(${moneySpent > 0 ? `+${Math.round((moneyMade / moneySpent) * 100)}%` : '0%'} if all win)`
+                    : `(${moneySpent > 0 ? `${moneyMade - moneySpent >= 0 ? '+' : ''}${Math.round(((moneyMade - moneySpent) / moneySpent) * 100)}%` : '0%'} ROI)`
+                  }
                 </p>
               </CardContent>
             </Card>
