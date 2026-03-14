@@ -141,14 +141,14 @@ export default function EventPage() {
       )}
 
       {/* Compact stats bar */}
-      <div className="mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-border bg-card px-4 py-3 text-xs">
+      <div className="mb-5 flex flex-wrap items-center gap-x-6 gap-y-3 rounded-lg border border-border bg-card px-5 py-4 text-sm">
         <Stat label="Fights" value={event.fights.length} />
         {titleBouts > 0 && <Stat label="Title" value={titleBouts} color="text-yellow-400" />}
         <Stat label="Predicted" value={`${predictedFights}/${event.fights.length}`} />
 
         {showAccuracy && (
           <>
-            <div className="h-4 w-px bg-border" />
+            <div className="h-5 w-px bg-border" />
             <Stat
               label="AI"
               value={`${aiCorrect}/${completedWithPredictions.length}`}
@@ -167,7 +167,7 @@ export default function EventPage() {
 
         {allBets.length > 0 && (
           <>
-            <div className="h-4 w-px bg-border" />
+            <div className="h-5 w-px bg-border" />
             <Stat
               label={isUpcoming ? 'Spend' : 'Spent'}
               value={`$${Math.round(moneySpent)}`}
@@ -217,10 +217,10 @@ function Stat({
   color?: string;
 }) {
   return (
-    <div className="flex items-baseline gap-1.5">
-      <span className="text-muted-foreground/60">{label}</span>
-      <span className={cn('font-semibold tabular-nums', color)}>{value}</span>
-      {sub && <span className="text-[10px] text-muted-foreground/50">{sub}</span>}
+    <div className="flex items-baseline gap-2">
+      <span className="text-muted-foreground/60 text-xs">{label}</span>
+      <span className={cn('text-base font-bold tabular-nums', color)}>{value}</span>
+      {sub && <span className="text-xs text-muted-foreground/50">{sub}</span>}
     </div>
   );
 }
