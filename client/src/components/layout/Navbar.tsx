@@ -5,6 +5,7 @@ const navItems = [
   { path: '/', label: 'Events' },
   { path: '/upsets', label: 'Value Bets' },
   { path: '/parlays', label: 'Parlays' },
+  { path: '/bets', label: 'Bet History' },
   { path: '/performance', label: 'Performance' },
 ];
 

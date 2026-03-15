@@ -14,6 +14,7 @@ from app.models import Event, Fight, Prediction
 from app.routers import events, fighters, fights, odds, performance, predictions
 from app.services.bestfightodds_scraper import fetch_and_store_odds
 from app.services.prediction_service import PredictionService
+from app.services.results_updater import update_results
 
 logger = logging.getLogger(__name__)
 
@@ -26,11 +27,16 @@ async def _refresh_loop():
         try:
             session = SyncSessionLocal()
             try:
-                # 1. Refresh odds from BestFightOdds
+                # 1. Update results from UFCStats for recent events
+                results_updated = update_results(session)
+                if results_updated:
+                    logger.info(f"Results update: {results_updated} fights updated")
+
+                # 2. Refresh odds from BestFightOdds
                 count = fetch_and_store_odds(session)
                 logger.info(f"Odds refresh: updated {count} fights")
 
-                # 2. Generate predictions for upcoming fights without one
+                # 3. Generate predictions for upcoming fights without one
                 upcoming_fights = session.execute(
                     select(Fight)
                     .join(Event, Fight.event_id == Event.id)

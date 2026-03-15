@@ -50,3 +50,24 @@ class ValueBetOut(BaseModel):
     ai_prob: float
 
     model_config = {"from_attributes": True}
+
+
+class BetHistoryOut(BaseModel):
+    fight_id: int
+    fighter_1_name: str
+    fighter_2_name: str
+    event_name: str
+    event_date: str
+    weight_class: str | None
+    bet_on: str
+    edge: float
+    bet_amount: float
+    american_odds: int
+    decimal_odds: float
+    vegas_implied: float
+    ai_prob: float
+    winner_name: str | None
+    won: bool | None
+    payout: float | None
+
+    model_config = {"from_attributes": True}

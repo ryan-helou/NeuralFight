@@ -1,5 +1,5 @@
 import api from './client';
-import type { FightDetail, Odds, Prediction, Upset, ValueBet } from '../types';
+import type { BetHistoryItem, FighterProfile, FightDetail, Odds, Prediction, Upset, ValueBet } from '../types';
 
 export async function getPrediction(fightId: number) {
   const { data } = await api.get<Prediction>(`/predictions/fight/${fightId}`);
@@ -45,5 +45,15 @@ export async function getOdds(fightId: number) {
 
 export async function getValueBets() {
   const { data } = await api.get<ValueBet[]>('/predictions/value-bets');
+  return data;
+}
+
+export async function getFighterProfile(id: number) {
+  const { data } = await api.get<FighterProfile>(`/fighters/${id}/profile`);
+  return data;
+}
+
+export async function getBetHistory() {
+  const { data } = await api.get<BetHistoryItem[]>('/predictions/bet-history');
   return data;
 }
