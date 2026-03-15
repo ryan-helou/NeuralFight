@@ -19,7 +19,7 @@ function fmtAmerican(odds: number) {
 }
 
 export default function UpsetsPage() {
-  const { data: bets, isLoading } = useQuery({
+  const { data: bets, isLoading, isError, error } = useQuery({
     queryKey: ['value-bets'],
     queryFn: getValueBets,
   });
@@ -76,10 +76,19 @@ export default function UpsetsPage() {
             <Skeleton key={i} className="h-12 w-full" />
           ))}
         </div>
+      ) : isError ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <p className="text-sm text-red-400">Failed to load value bets.</p>
+            <p className="mt-1 text-xs text-muted-foreground/60">
+              {error instanceof Error ? error.message : 'Unknown error'}
+            </p>
+          </CardContent>
+        </Card>
       ) : !bets || bets.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center text-muted-foreground">
-            No value bets found. AI and Vegas agree on everything right now.
+            No value bets right now. Check back when upcoming fights have predictions and odds.
           </CardContent>
         </Card>
       ) : (

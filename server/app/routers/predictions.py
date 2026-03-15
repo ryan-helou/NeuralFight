@@ -179,40 +179,38 @@ async def get_upsets(
 async def get_value_bets(
     session: AsyncSession = Depends(get_session),
 ):
-    """Get fights where the AI sees value (edge >= 3% over Vegas odds)."""
-    # Latest prediction per fight
-    latest_ids = (
-        select(func.max(Prediction.id).label("id"))
-        .group_by(Prediction.fight_id)
-        .subquery()
+    """Get upcoming fights where the AI sees value (edge >= 3% over Vegas odds)."""
+    today = date.today()
+
+    # Get upcoming fights with predictions and odds in a single query
+    result = await session.execute(
+        select(Fight, Prediction, BettingOdds, Fighter, Event)
+        .join(Event, Fight.event_id == Event.id)
+        .join(Prediction, Prediction.fight_id == Fight.id)
+        .join(BettingOdds, BettingOdds.fight_id == Fight.id)
+        .join(Fighter, Fighter.id == Fight.fighter_1_id)
+        .where(Event.date >= today)
+        .where(Fight.winner_id.is_(None))
     )
-    preds = (
-        await session.execute(
-            select(Prediction)
-            .join(latest_ids, Prediction.id == latest_ids.c.id)
-        )
-    ).scalars().all()
+    rows = result.all()
+
+    # Deduplicate: keep latest prediction and latest odds per fight
+    fight_data: dict[int, dict] = {}
+    for fight, pred, odds, f1, event in rows:
+        fid = fight.id
+        if fid not in fight_data:
+            fight_data[fid] = {"fight": fight, "pred": pred, "odds": odds, "event": event}
+        else:
+            if pred.id > fight_data[fid]["pred"].id:
+                fight_data[fid]["pred"] = pred
+            if odds.retrieved_at > fight_data[fid]["odds"].retrieved_at:
+                fight_data[fid]["odds"] = odds
 
     value_bets = []
-    for pred in preds:
-        fight = await session.get(Fight, pred.fight_id)
-        if not fight:
-            continue
-
-        # Get odds
-        odds_result = await session.execute(
-            select(BettingOdds)
-            .where(BettingOdds.fight_id == fight.id)
-            .order_by(BettingOdds.retrieved_at.desc())
-            .limit(1)
-        )
-        odds = odds_result.scalars().first()
-        if not odds:
-            continue
-
+    for fid, d in fight_data.items():
+        fight, pred, odds, event = d["fight"], d["pred"], d["odds"], d["event"]
         f1 = await session.get(Fighter, fight.fighter_1_id)
         f2 = await session.get(Fighter, fight.fighter_2_id)
-        event = await session.get(Event, fight.event_id)
 
         implied_f1 = 1.0 / odds.fighter_1_decimal if odds.fighter_1_decimal > 0 else 0
         implied_f2 = 1.0 / odds.fighter_2_decimal if odds.fighter_2_decimal > 0 else 0
