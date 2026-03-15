@@ -114,3 +114,51 @@ app.include_router(performance.router)
 @app.get("/api/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.post("/api/admin/refresh")
+def manual_refresh():
+    """Manually trigger the results + odds + predictions refresh."""
+    session = SyncSessionLocal()
+    results = {"results_updated": 0, "odds_updated": 0, "predictions_generated": 0, "errors": []}
+    try:
+        try:
+            results["results_updated"] = update_results(session)
+        except Exception as e:
+            results["errors"].append(f"Results update failed: {e}")
+
+        try:
+            results["odds_updated"] = fetch_and_store_odds(session)
+        except Exception as e:
+            results["errors"].append(f"Odds refresh failed: {e}")
+
+        try:
+            upcoming_fights = session.execute(
+                select(Fight)
+                .join(Event, Fight.event_id == Event.id)
+                .where(Event.date >= date.today())
+            ).scalars().all()
+
+            service = PredictionService(session)
+            generated = 0
+            for fight in upcoming_fights:
+                existing = session.execute(
+                    select(Prediction)
+                    .where(Prediction.fight_id == fight.id)
+                    .limit(1)
+                ).scalar_one_or_none()
+                if not existing:
+                    try:
+                        pred = service.generate_prediction(fight.id)
+                        if pred:
+                            generated += 1
+                    except Exception:
+                        continue
+            results["predictions_generated"] = generated
+        except Exception as e:
+            results["errors"].append(f"Predictions failed: {e}")
+
+    finally:
+        session.close()
+
+    return results
