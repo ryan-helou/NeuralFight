@@ -121,6 +121,40 @@ export interface Odds {
   retrieved_at: string;
 }
 
+export interface FighterFight {
+  fight_id: number;
+  event_name: string;
+  event_date: string;
+  opponent_name: string;
+  result: string | null;
+  method: string | null;
+  weight_class: string | null;
+  is_title_bout: boolean;
+}
+
+export interface FighterProfile {
+  id: number;
+  name: string;
+  nickname: string | null;
+  height_inches: number | null;
+  reach_inches: number | null;
+  dob: string | null;
+  stance: string | null;
+  wins: number;
+  losses: number;
+  draws: number;
+  ko_wins: number;
+  sub_wins: number;
+  dec_wins: number;
+  avg_sig_strikes: number;
+  avg_takedowns: number;
+  avg_knockdowns: number;
+  avg_control_time: number;
+  avg_sub_attempts: number;
+  recent_fights: FighterFight[];
+  upcoming_fights: FighterFight[];
+}
+
 export interface Upset {
   fight_id: number;
   fighter_1_name: string;
@@ -147,4 +181,23 @@ export interface ValueBet {
   decimal_odds: number;
   vegas_implied: number;
   ai_prob: number;
+}
+
+export interface BetHistoryItem {
+  fight_id: number;
+  fighter_1_name: string;
+  fighter_2_name: string;
+  event_name: string;
+  event_date: string;
+  weight_class: string | null;
+  bet_on: string;
+  edge: number;
+  bet_amount: number;
+  american_odds: number;
+  decimal_odds: number;
+  vegas_implied: number;
+  ai_prob: number;
+  winner_name: string | null;
+  won: boolean | null;
+  payout: number | null;
 }

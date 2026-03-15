@@ -92,9 +92,9 @@ export default function FightPage() {
           </Badge>
         )}
         <h1 className="mt-1 text-xl font-bold sm:text-2xl">
-          <span className="text-blue-400">{fight.fighter_1.name}</span>
+          <Link to={`/fighters/${fight.fighter_1.id}`} className="text-blue-400 hover:underline">{fight.fighter_1.name}</Link>
           <span className="mx-2 text-muted-foreground/40 text-lg">vs</span>
-          <span className="text-red-400">{fight.fighter_2.name}</span>
+          <Link to={`/fighters/${fight.fighter_2.id}`} className="text-red-400 hover:underline">{fight.fighter_2.name}</Link>
         </h1>
         <p className="mt-1 text-xs text-muted-foreground/60">
           {fight.event_name}

@@ -6,6 +6,8 @@ import FightPage from './pages/FightPage'
 import UpsetsPage from './pages/UpsetsPage'
 import PerformancePage from './pages/PerformancePage'
 import ParlayPage from './pages/ParlayPage'
+import BetHistoryPage from './pages/BetHistoryPage'
+import FighterPage from './pages/FighterPage'
 
 export default function App() {
   return (
@@ -16,6 +18,8 @@ export default function App() {
         <Route path="/fights/:id" element={<FightPage />} />
         <Route path="/upsets" element={<UpsetsPage />} />
         <Route path="/parlays" element={<ParlayPage />} />
+        <Route path="/bets" element={<BetHistoryPage />} />
+        <Route path="/fighters/:id" element={<FighterPage />} />
         <Route path="/performance" element={<PerformancePage />} />
       </Route>
     </Routes>

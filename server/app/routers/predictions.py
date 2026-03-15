@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.database import get_session, get_sync_session
 from app.models import Event, Fight, Fighter, Prediction
 from app.models.betting_odds import BettingOdds
-from app.schemas.prediction import PredictionOut, UpsetOut, ValueBetOut
+from app.schemas.prediction import BetHistoryOut, PredictionOut, UpsetOut, ValueBetOut
 from app.services.prediction_service import PredictionService
 
 router = APIRouter(prefix="/api/predictions", tags=["predictions"])
@@ -257,3 +257,106 @@ async def get_value_bets(
 
     value_bets.sort(key=lambda x: x.edge, reverse=True)
     return value_bets[:50]
+
+
+@router.get("/bet-history", response_model=list[BetHistoryOut])
+async def get_bet_history(
+    session: AsyncSession = Depends(get_session),
+):
+    """Get full bet history: all value bets (past and upcoming) with outcomes."""
+    # Latest prediction per fight
+    latest_ids = (
+        select(func.max(Prediction.id).label("id"))
+        .group_by(Prediction.fight_id)
+        .subquery()
+    )
+    preds = (
+        await session.execute(
+            select(Prediction)
+            .join(latest_ids, Prediction.id == latest_ids.c.id)
+        )
+    ).scalars().all()
+
+    history = []
+    for pred in preds:
+        fight = await session.get(Fight, pred.fight_id)
+        if not fight:
+            continue
+
+        # Get odds
+        odds_result = await session.execute(
+            select(BettingOdds)
+            .where(BettingOdds.fight_id == fight.id)
+            .order_by(BettingOdds.retrieved_at.desc())
+            .limit(1)
+        )
+        odds = odds_result.scalars().first()
+        if not odds:
+            continue
+
+        f1 = await session.get(Fighter, fight.fighter_1_id)
+        f2 = await session.get(Fighter, fight.fighter_2_id)
+        event = await session.get(Event, fight.event_id)
+
+        implied_f1 = 1.0 / odds.fighter_1_decimal if odds.fighter_1_decimal > 0 else 0
+        implied_f2 = 1.0 / odds.fighter_2_decimal if odds.fighter_2_decimal > 0 else 0
+        edge_f1 = pred.fighter_1_win_prob - implied_f1
+        edge_f2 = pred.fighter_2_win_prob - implied_f2
+        best_edge = max(edge_f1, edge_f2)
+
+        if best_edge < 0.03:
+            continue
+
+        if edge_f1 > edge_f2:
+            bet_on = f1.name if f1 else "Unknown"
+            american = odds.fighter_1_american
+            decimal = odds.fighter_1_decimal
+            ai_prob = pred.fighter_1_win_prob
+            vegas_implied = implied_f1
+        else:
+            bet_on = f2.name if f2 else "Unknown"
+            american = odds.fighter_2_american
+            decimal = odds.fighter_2_decimal
+            ai_prob = pred.fighter_2_win_prob
+            vegas_implied = implied_f2
+
+        bet_amount = round(min(100 * (best_edge / 0.05), 500), 2)
+
+        # Determine outcome
+        winner_name: str | None = None
+        won: bool | None = None
+        payout: float | None = None
+
+        if fight.winner_id:
+            winner = await session.get(Fighter, fight.winner_id)
+            winner_name = winner.name if winner else None
+            if winner_name:
+                won = bet_on == winner_name
+                payout = round(bet_amount * (decimal - 1), 2) if won else round(-bet_amount, 2)
+        elif fight.result and fight.result.lower() in ("draw", "nc", "no contest"):
+            winner_name = None
+            won = False
+            payout = round(-bet_amount, 2)
+
+        history.append(BetHistoryOut(
+            fight_id=pred.fight_id,
+            fighter_1_name=f1.name if f1 else "Unknown",
+            fighter_2_name=f2.name if f2 else "Unknown",
+            event_name=event.name if event else "Unknown",
+            event_date=str(event.date) if event else "",
+            weight_class=fight.weight_class,
+            bet_on=bet_on,
+            edge=round(best_edge, 4),
+            bet_amount=bet_amount,
+            american_odds=american,
+            decimal_odds=round(decimal, 2),
+            vegas_implied=round(vegas_implied, 4),
+            ai_prob=round(ai_prob, 4),
+            winner_name=winner_name,
+            won=won,
+            payout=payout,
+        ))
+
+    # Sort by event date descending (newest first)
+    history.sort(key=lambda x: x.event_date, reverse=True)
+    return history
