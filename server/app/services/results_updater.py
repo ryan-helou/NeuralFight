@@ -351,6 +351,29 @@ def _store_round_stats(session: Session, fight_id: int, html: str):
             ))
 
 
+def _find_matching_event(db_event_name: str, ufcstats_events: list[dict]) -> dict | None:
+    """Find a UFCStats event matching our DB event name (fuzzy)."""
+    db_norm = db_event_name.lower().strip()
+    for uf in ufcstats_events:
+        uf_norm = uf["name"].lower().strip()
+        # Exact match
+        if db_norm == uf_norm:
+            return uf
+        # DB name might be shorter (e.g. "UFC Fight Night" vs "UFC Fight Night: Doe vs Smith")
+        # or BFO uses different naming. Try substring match.
+        if db_norm in uf_norm or uf_norm in db_norm:
+            return uf
+        # Match on key parts: "UFC 314" in both, or "Vegas 114" in both
+        db_words = set(db_norm.split())
+        uf_words = set(uf_norm.split())
+        # If they share a numbered identifier like "314" or "vegas 114"
+        db_nums = {w for w in db_words if w.isdigit()}
+        uf_nums = {w for w in uf_words if w.isdigit()}
+        if db_nums and db_nums == uf_nums and ("ufc" in db_words and "ufc" in uf_words):
+            return uf
+    return None
+
+
 def _match_fight(session: Session, db_fights: list[Fight], scraped: dict) -> Fight | None:
     for f in db_fights:
         f1 = session.get(Fighter, f.fighter_1_id)
