@@ -119,13 +119,14 @@ async def health():
 @app.post("/api/admin/refresh")
 def manual_refresh():
     """Manually trigger the results + odds + predictions refresh."""
+    import traceback
     session = SyncSessionLocal()
-    results = {"results_updated": 0, "odds_updated": 0, "predictions_generated": 0, "errors": []}
+    results = {"results_updated": 0, "odds_updated": 0, "predictions_generated": 0, "errors": [], "debug": []}
     try:
         try:
-            results["results_updated"] = update_results(session)
+            results["results_updated"] = update_results(session, debug_log=results["debug"])
         except Exception as e:
-            results["errors"].append(f"Results update failed: {e}")
+            results["errors"].append(f"Results update failed: {traceback.format_exc()}")
 
         try:
             results["odds_updated"] = fetch_and_store_odds(session)
