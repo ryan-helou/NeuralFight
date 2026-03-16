@@ -34,6 +34,16 @@ def update_results(session: Session, debug_log: list | None = None) -> int:
         if debug_log is not None:
             debug_log.append(msg)
 
+    today = date.today()
+    cutoff = today + timedelta(days=1)
+    lookback = today - timedelta(days=14)
+    _dbg(f"Date range: {lookback} to {cutoff} (today={today})")
+
+    all_recent = session.execute(
+        select(Event).where(Event.date >= lookback, Event.date < cutoff)
+    ).scalars().all()
+    _dbg(f"Events in date range: {[(e.name, str(e.date)) for e in all_recent]}")
+
     events = _events_needing_results(session)
     if not events:
         _dbg("No events need results updates")
