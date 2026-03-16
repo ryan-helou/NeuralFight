@@ -21,7 +21,7 @@ BASE_URL = "http://www.ufcstats.com"
 EVENTS_LIST_URL = f"{BASE_URL}/statistics/events/completed?page=all"
 
 
-def update_results(session: Session) -> int:
+def update_results(session: Session, debug_log: list | None = None) -> int:
     """Scrape UFCStats for results of recently completed events.
 
     Looks for events in the last 14 days that have fights without results,
@@ -29,12 +29,17 @@ def update_results(session: Session) -> int:
 
     Returns number of fights updated.
     """
+    def _dbg(msg: str):
+        logger.info(msg)
+        if debug_log is not None:
+            debug_log.append(msg)
+
     events = _events_needing_results(session)
     if not events:
-        logger.info("No events need results updates")
+        _dbg("No events need results updates")
         return 0
 
-    logger.info(f"Found {len(events)} events needing results: {[e.name for e in events]}")
+    _dbg(f"Found {len(events)} events needing results: {[e.name for e in events]}")
 
     updated = 0
     try:
@@ -47,12 +52,15 @@ def update_results(session: Session) -> int:
             resp = client.get(EVENTS_LIST_URL)
             resp.raise_for_status()
             ufcstats_events = _parse_event_list(resp.text)
+            _dbg(f"Parsed {len(ufcstats_events)} events from UFCStats (first 3: {[e['name'] for e in ufcstats_events[:3]]})")
 
             for event in events:
+                _dbg(f"Trying to match DB event: '{event.name}' (date={event.date})")
                 matched = _find_matching_event(event, ufcstats_events, session)
                 if not matched:
-                    logger.info(f"Could not find '{event.name}' on UFCStats")
+                    _dbg(f"Could not find '{event.name}' on UFCStats")
                     continue
+                _dbg(f"Matched '{event.name}' -> '{matched['name']}'")
 
                 # Scrape event detail page
                 time.sleep(0.5)
