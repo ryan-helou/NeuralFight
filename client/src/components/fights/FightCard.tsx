@@ -71,12 +71,41 @@ export default function FightCard({ fight }: FightCardProps) {
             </div>
           )}
 
+          {/* Result banner for completed fights */}
+          {isComplete && (
+            <div className="mb-2 flex items-center justify-between rounded-md bg-muted/50 px-2.5 py-1.5">
+              <span className="text-xs text-muted-foreground">
+                <span className="font-semibold text-foreground">{fight.winner_name}</span> wins
+                {fight.method && <> by <span className="text-muted-foreground/80">{fight.method}</span></>}
+              </span>
+              <div className="flex items-center gap-2 text-[11px]">
+                {aiRight !== null && (
+                  <span className={cn('font-medium', aiRight ? 'text-green-400' : 'text-red-400')}>
+                    AI {aiRight ? '\u2713' : '\u2717'}
+                  </span>
+                )}
+                {vegasRight !== null && (
+                  <span className={cn('font-medium', vegasRight ? 'text-green-400' : 'text-red-400')}>
+                    Vegas {vegasRight ? '\u2713' : '\u2717'}
+                  </span>
+                )}
+                {payout !== null && (
+                  <span className={cn('font-semibold tabular-nums', payout >= 0 ? 'text-green-400' : 'text-red-400')}>
+                    {payout >= 0 ? '+' : ''}${Math.abs(payout).toFixed(0)}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Main matchup row */}
           <div className="flex items-center gap-3">
             {/* Fighter 1 */}
             <div className="flex-1 text-right">
               <div className={cn(
                 'text-sm font-semibold leading-tight',
+                isComplete && fight.winner_name === fight.fighter_1_name ? 'text-green-400' :
+                isComplete ? 'text-muted-foreground/50' :
                 hasPrediction && f1Favored ? 'text-foreground' : 'text-muted-foreground'
               )}>
                 {fight.fighter_1_name}
@@ -104,6 +133,8 @@ export default function FightCard({ fight }: FightCardProps) {
             <div className="flex-1">
               <div className={cn(
                 'text-sm font-semibold leading-tight',
+                isComplete && fight.winner_name === fight.fighter_2_name ? 'text-green-400' :
+                isComplete ? 'text-muted-foreground/50' :
                 hasPrediction && !f1Favored ? 'text-foreground' : 'text-muted-foreground'
               )}>
                 {fight.fighter_2_name}
@@ -138,39 +169,9 @@ export default function FightCard({ fight }: FightCardProps) {
             </span>
 
             <div className="flex items-center gap-2.5 text-[11px]">
-              {/* Value bet + P&L */}
-              {hasBet && (
-                <span className="flex items-center gap-1.5">
-                  <span className="text-muted-foreground/60">
-                    ${fight.bet_amount} on {fight.bet_on}
-                  </span>
-                  {payout !== null && (
-                    <span className={cn(
-                      'font-semibold tabular-nums',
-                      payout >= 0 ? 'text-green-400' : 'text-red-400'
-                    )}>
-                      {payout >= 0 ? '+' : ''}{payout.toFixed(0)}
-                    </span>
-                  )}
-                </span>
-              )}
-
-              {/* AI/Vegas correctness */}
-              {aiRight !== null && (
-                <span className={cn('font-medium', aiRight ? 'text-green-400/80' : 'text-red-400/80')}>
-                  AI {aiRight ? '\u2713' : '\u2717'}
-                </span>
-              )}
-              {vegasRight !== null && (
-                <span className={cn('font-medium', vegasRight ? 'text-green-400/80' : 'text-red-400/80')}>
-                  Vegas {vegasRight ? '\u2713' : '\u2717'}
-                </span>
-              )}
-
-              {/* Winner */}
-              {isComplete && (
+              {hasBet && !isComplete && (
                 <span className="text-muted-foreground/60">
-                  W: <span className="text-foreground/80 font-medium">{fight.winner_name}</span>
+                  ${fight.bet_amount} on {fight.bet_on}
                 </span>
               )}
             </div>
