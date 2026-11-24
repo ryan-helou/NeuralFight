@@ -6,6 +6,8 @@
 
 <a href="https://neural-fight.vercel.app"><img alt="Open neural-fight.vercel.app" src="https://img.shields.io/badge/Open-neural--fight.vercel.app-24292f?style=for-the-badge"></a>
 
+<!-- facts --><img alt="Predicts: winner and method" src="https://img.shields.io/badge/Predicts-winner_and_method-24292f?style=for-the-badge"> <img alt="Trained on: every past UFC event" src="https://img.shields.io/badge/Trained_on-every_past_UFC_event-24292f?style=for-the-badge"> <img alt="Fight data: UFCStats.com" src="https://img.shields.io/badge/Fight_data-UFCStats.com-24292f?style=for-the-badge">
+
 </div>
 
 <br>
