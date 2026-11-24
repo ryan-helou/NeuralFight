@@ -14,7 +14,7 @@
 
 NeuralFight collects the results and round-by-round stats of every past UFC event (strikes landed, takedowns, time spent in control, and so on) along with each fighter's height, reach, and age. A machine-learning model (a program that learns patterns from past examples) uses that history to estimate each fighter's chance of winning and whether the fight is likely to end by knockout, submission, or the judges' decision. It also compares its estimates with betting odds to point out fights where the two disagree.
 
-It is a personal project made out of curiosity about the sport and about prediction. The predictions are for interest only and are not betting advice.
+The predictions are for interest only and are not betting advice.
 
 ## What you can do with it
 
